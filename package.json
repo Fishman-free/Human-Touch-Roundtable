@@ -7,8 +7,9 @@
   "scripts": {
     "dev": "tsx watch server.ts",
     "build": "next build",
-    "backup": "tsx scripts/backup.ts",
-    "start": "NODE_ENV=production tsx server.ts",
+    "backup": "node scripts/backup.ts",
+    "start": "NODE_ENV=production node server.ts",
+    "smoke:prod": "tsx scripts/smoke-production.ts",
     "test": "node --test tests/*.test.ts",
     "typecheck": "next typegen && tsc --noEmit",
     "audit:repo": "node scripts/audit-repository.mjs",

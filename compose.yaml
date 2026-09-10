@@ -1,0 +1,39 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_PATH: /app/data/roundtable.db
+      SESSION_HMAC_KEY: ${SESSION_HMAC_KEY:?SESSION_HMAC_KEY is required}
+      ALLOWED_ORIGINS: https://${DOMAIN:?DOMAIN is required}
+      TRUST_PROXY_HOPS: "1"
+      AI_MODE: live
+      AI_ATTEMPT_TIMEOUT_MS: ${AI_ATTEMPT_TIMEOUT_MS:-8000}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      GLM_API_KEY: ${GLM_API_KEY:-}
+      GLM_MODEL: ${GLM_MODEL:-glm-4-flash}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    volumes:
+      - roundtable_data:/app/data
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  roundtable_data:
+  caddy_data:
+  caddy_config:

@@ -20,3 +20,11 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+      - run: npm run smoke:prod
+      - run: docker build -t human-touch-roundtable:ci .
+      - run: docker compose config --quiet
+        env:
+          DOMAIN: roundtable.example.com
+          SESSION_HMAC_KEY: ci-compose-session-key-at-least-32-bytes
+          DEEPSEEK_API_KEY: ci-placeholder-not-a-real-key
+          METRICS_TOKEN: ci-compose-metrics-token-at-least-24-bytes
