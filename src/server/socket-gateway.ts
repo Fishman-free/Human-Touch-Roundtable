@@ -4,10 +4,15 @@ import type { RoomRuntime } from "../application/room-runtime.ts";
 import type { SessionRecord } from "./session.ts";
 import { AdmissionService, type AdmissionResult } from "./admission-service.ts";
 import type { ClientToServerEvents, JoinMode, ServerToClientEvents, SessionResult, SocketCommandAck } from "./socket-contracts.ts";
+import type { Clock } from "../application/ports.ts";
+import { ConnectionQuota, FixedWindowRateLimiter, type RateLimitRule } from "./rate-limit.ts";
+import { resolveClientIp } from "./socket-security.ts";
+import { systemClock } from "./runtime-dependencies.ts";
 
 type GameServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 type Connection = { runtime: RoomRuntime; session: SessionRecord; unsubscribe: () => void };
+type Transport = { ip: string; timeout: unknown; authenticated: boolean };
 type ObjectValue = Record<string, unknown>;
 
 function object(value: unknown): value is ObjectValue {
@@ -27,19 +32,52 @@ function base(value: ObjectValue) {
     typeof value.matchId === "string" && value.matchId.length >= 1 && value.matchId.length <= 128 &&
     Number.isSafeInteger(value.phaseToken) && (value.phaseToken as number) >= 0;
 }
-function commandAck(commandId: unknown, revision: number, error: "NOT_JOINED" | "INVALID_SESSION" | "INVALID_INPUT" | "ROOM_UNAVAILABLE"): SocketCommandAck {
+function commandAck(commandId: unknown, revision: number, error: "NOT_JOINED" | "INVALID_SESSION" | "INVALID_INPUT" | "ROOM_UNAVAILABLE" | "RATE_LIMITED"): SocketCommandAck {
   return { commandId: typeof commandId === "string" ? commandId : "", revision, ok: false, error };
 }
+
+export interface SocketGatewayOptions {
+  clock: Clock;
+  trustedProxyHops: number;
+  maxConnectionsPerIp: number;
+  unauthenticatedTimeoutMs: number;
+  create: RateLimitRule;
+  admission: RateLimitRule;
+  command: RateLimitRule;
+}
+
+const securityDefaults: SocketGatewayOptions = {
+  clock: systemClock, trustedProxyHops: 0, maxConnectionsPerIp: 20, unauthenticatedTimeoutMs: 30_000,
+  create: { limit: 5, windowMs: 60_000 }, admission: { limit: 20, windowMs: 60_000 },
+  command: { limit: 20, windowMs: 10_000 },
+};
 
 export class SocketGateway {
   private connections = new Map<string, Connection>();
   private activeSessions = new Map<string, GameSocket>();
   private io: GameServer;
   private admissions: AdmissionService;
+  private security: SocketGatewayOptions;
+  private limiter: FixedWindowRateLimiter;
+  private quota = new ConnectionQuota();
+  private transports = new Map<string, Transport>();
 
-  constructor(io: GameServer, admissions: AdmissionService) {
+  constructor(io: GameServer, admissions: AdmissionService, options: Partial<SocketGatewayOptions> = {}) {
     this.io = io;
     this.admissions = admissions;
+    this.security = { ...securityDefaults, ...options,
+      create: { ...securityDefaults.create, ...options.create },
+      admission: { ...securityDefaults.admission, ...options.admission },
+      command: { ...securityDefaults.command, ...options.command } };
+    this.limiter = new FixedWindowRateLimiter(() => this.security.clock.now());
+    if (![this.security.maxConnectionsPerIp, this.security.unauthenticatedTimeoutMs, this.security.trustedProxyHops]
+      .every(value => Number.isSafeInteger(value) && value >= 0) || this.security.maxConnectionsPerIp === 0 ||
+      this.security.unauthenticatedTimeoutMs === 0) throw new Error("INVALID_SOCKET_SECURITY_OPTIONS");
+    for (const rule of [this.security.create, this.security.admission, this.security.command]) {
+      if (!Number.isSafeInteger(rule.limit) || rule.limit <= 0 || !Number.isSafeInteger(rule.windowMs) || rule.windowMs <= 0) {
+        throw new Error("INVALID_SOCKET_SECURITY_OPTIONS");
+      }
+    }
   }
 
   register() {
@@ -47,19 +85,33 @@ export class SocketGateway {
   }
 
   private connection(socket: GameSocket) {
+    const forwarded = socket.handshake.headers["x-forwarded-for"];
+    const ip = resolveClientIp(socket.handshake.address, forwarded, this.security.trustedProxyHops);
+    if (!this.quota.acquire(ip, this.security.maxConnectionsPerIp)) {
+      socket.emit("server:error", "CONNECTION_LIMIT"); socket.disconnect(true); return;
+    }
+    const timeout = this.security.clock.setTimeout(() => {
+      const transport = this.transports.get(socket.id);
+      if (transport && !transport.authenticated) socket.conn.close();
+    }, this.security.unauthenticatedTimeoutMs);
+    this.transports.set(socket.id, { ip, timeout, authenticated: false });
+
     socket.on("room:create", (input, ack) => this.handleSession(ack, async () => {
+      if (!this.allow(socket, "create", this.security.create)) return { ok: false, error: "RATE_LIMITED" };
       const parsed = this.admission(input);
       if (!parsed) return { ok: false, error: "INVALID_INPUT" };
       return this.finishAdmission(socket, await this.admissions.create(parsed.roomId, parsed.mode, parsed.requestId));
     }));
 
     socket.on("room:join", (input, ack) => this.handleSession(ack, async () => {
+      if (!this.allow(socket, "admission", this.security.admission)) return { ok: false, error: "RATE_LIMITED" };
       const parsed = this.admission(input);
       if (!parsed) return { ok: false, error: "INVALID_INPUT" };
       return this.finishAdmission(socket, await this.admissions.join(parsed.roomId, parsed.mode, parsed.requestId));
     }));
 
     socket.on("room:resume", (input, ack) => this.handleSession(ack, async () => {
+      if (!this.allow(socket, "admission", this.security.admission)) return { ok: false, error: "RATE_LIMITED" };
       if (!object(input) || !exact(input, ["roomId", "sessionToken"]) || !roomId(input.roomId) ||
         typeof input.sessionToken !== "string") return { ok: false, error: "INVALID_INPUT" };
       return this.finishAdmission(socket, await this.admissions.resume(input.roomId, input.sessionToken));
@@ -69,8 +121,11 @@ export class SocketGateway {
       if (typeof ack !== "function") return;
       const connection = this.connections.get(socket.id);
       if (!connection) { ack({ ok: false, error: "NOT_JOINED" }); return; }
+      if (!this.limiter.allow("command", connection.session.id, this.security.command)) {
+        ack({ ok: false, error: "RATE_LIMITED" }); return;
+      }
       void this.admissions.authorize(connection.session.id).then(active => {
-        if (!active) { ack({ ok: false, error: "INVALID_SESSION" }); this.detach(socket); socket.disconnect(true); return; }
+        if (!active) { ack({ ok: false, error: "INVALID_SESSION" }); this.expire(socket); return; }
         connection.session = active;
         return connection.runtime.sync(active.viewer).then(view => ack({ ok: true, view }));
       }).catch(() => ack({ ok: false, error: "ROOM_UNAVAILABLE" }));
@@ -100,7 +155,7 @@ export class SocketGateway {
       ["commandId", "matchId", "phaseToken", "targetSeatId"]) && base(input) && typeof input.targetSeatId === "string"
       ? { type: "vote", targetSeatId: input.targetSeatId } : null);
 
-    socket.on("disconnect", () => this.detach(socket));
+    socket.on("disconnect", () => { this.detach(socket); this.release(socket); });
   }
 
   private admission(input: unknown): { requestId: string; roomId: string; mode: JoinMode } | null {
@@ -129,13 +184,15 @@ export class SocketGateway {
       void this.admissions.authorize(session.id).then(active => {
         const connection = this.connections.get(socket.id);
         if (!connection || connection.session.id !== session.id) return;
-        if (!active) { this.detach(socket); socket.disconnect(true); return; }
+        if (!active) { this.expire(socket); return; }
         connection.session = active;
         socket.emit("room:state", state);
       }).catch(() => {});
     });
     this.connections.set(socket.id, { runtime, session, unsubscribe });
     this.activeSessions.set(session.id, socket);
+    const transport = this.transports.get(socket.id);
+    if (transport) { transport.authenticated = true; this.security.clock.clearTimeout(transport.timeout); }
     return view;
   }
 
@@ -156,6 +213,9 @@ export class SocketGateway {
       const connection = this.connections.get(socket.id);
       const revision = connection?.runtime.view({ kind: "spectator" }).revision ?? 0;
       if (!connection) { ack(commandAck(object(input) ? input.commandId : "", revision, "NOT_JOINED")); return; }
+      if (!this.limiter.allow("command", connection.session.id, this.security.command)) {
+        ack(commandAck(object(input) ? input.commandId : "", revision, "RATE_LIMITED")); return;
+      }
       if (connection.session.viewer.kind !== "participant") {
         ack({ commandId: object(input) && typeof input.commandId === "string" ? input.commandId : "",
           revision, ok: false, error: "FORBIDDEN" });
@@ -168,7 +228,7 @@ export class SocketGateway {
       void this.admissions.authorize(connection.session.id).then(active => {
         if (!active || active.viewer.kind !== "participant") {
           ack(commandAck(request.commandId, revision, "INVALID_SESSION"));
-          this.detach(socket); socket.disconnect(true); return;
+          this.expire(socket); return;
         }
         connection.session = active;
         return connection.runtime.dispatch(active.viewer.participantId, request).then(ack);
@@ -179,6 +239,25 @@ export class SocketGateway {
   private handleSession(ack: (result: SessionResult) => void, action: () => Promise<SessionResult>) {
     if (typeof ack !== "function") return;
     void action().then(ack, () => ack({ ok: false, error: "ROOM_UNAVAILABLE" }));
+  }
+
+  private allow(socket: GameSocket, scope: string, rule: RateLimitRule): boolean {
+    const ip = this.transports.get(socket.id)?.ip;
+    return ip ? this.limiter.allow(scope, ip, rule) : false;
+  }
+
+  private release(socket: GameSocket) {
+    const transport = this.transports.get(socket.id);
+    if (!transport) return;
+    this.security.clock.clearTimeout(transport.timeout);
+    this.quota.release(transport.ip);
+    this.transports.delete(socket.id);
+  }
+
+  private expire(socket: GameSocket) {
+    socket.emit("session:expired");
+    this.detach(socket);
+    socket.disconnect(true);
   }
 
 }

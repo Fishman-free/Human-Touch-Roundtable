@@ -15,6 +15,7 @@ const errorText: Record<string, string> = {
   WRONG_PHASE: "当前阶段不能执行此操作", STALE_PHASE: "阶段已经推进，请按最新状态操作", DUPLICATE: "操作已经确认",
   INVALID_TARGET: "不能选择这个座位", COMMAND_ID_REUSED: "请求标识已被其他操作使用", COMMAND_LIMIT: "本局操作记录已满",
   NOT_JOINED: "尚未进入房间", WRONG_MATCH: "对局已经更换",
+  RATE_LIMITED: "操作过于频繁，请稍后再试",
 };
 
 function id() { return crypto.randomUUID().replaceAll("-", "_"); }
@@ -49,6 +50,10 @@ export function useGameSession(): GameSession {
       sessionStorage.removeItem(storageKey);
       setError("此会话已在另一个页面接管");
       setView(undefined);
+    });
+    socket.on("session:expired", () => {
+      sessionStorage.removeItem(storageKey);
+      setBusy(false); setView(undefined); setError("会话已过期，请重新进入房间");
     });
     return () => { socket.disconnect(); socketRef.current = null; };
   }, []);
