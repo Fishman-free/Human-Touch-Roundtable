@@ -1,5 +1,5 @@
 import type { Server } from "socket.io";
-import type { AiProvider, RuntimeOptions, TopicProvider } from "../application/ports.ts";
+import type { AiProvider, DiagnosticKind, RuntimeOptions, TopicProvider } from "../application/ports.ts";
 import { SqlitePersistence } from "../repository/sqlite-persistence.ts";
 import { RoomRegistry, type RoomLifecycleOptions } from "./room-registry.ts";
 import { SessionService } from "./session.ts";
@@ -21,7 +21,7 @@ export interface ServerContextConfig {
 export function createServerContext(config: ServerContextConfig, providers: {
   topics: TopicProvider;
   ai: AiProvider;
-  diagnose?: (event: { roomId: string; kind: string }) => void;
+  diagnose?: (event: { roomId: string; kind: DiagnosticKind }) => void;
 }) {
   if (Buffer.byteLength(config.sessionHmacKey) < 32) throw new Error("SESSION_KEY_TOO_SHORT");
   const persistence = new SqlitePersistence(config.databasePath);
@@ -64,6 +64,14 @@ export function createServerContext(config: ServerContextConfig, providers: {
         ? "SOCKET_GATEWAY_ALREADY_REGISTERED" : "SERVER_CONTEXT_NOT_INITIALIZED");
       new SocketGateway(io, admissions, { clock: systemClock, ...config.socket }).register();
       registered = true;
+    },
+    check() {
+      try { return !closed && initialized && persistence.check(); }
+      catch { return false; }
+    },
+    backup(path: string) {
+      if (closed || !initialized) return Promise.reject(new Error("SERVER_CONTEXT_NOT_READY"));
+      return persistence.backup(path);
     },
     async close() {
       if (closed) return;
