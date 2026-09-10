@@ -1,4 +1,6 @@
-# 单实例生产部署
+# 单实例生产基础设施部署
+
+> Docker、Caddy、生产进程冒烟和配置校验已通过CI；真实知乎网关尚未实现，因此当前版本不满足公开游戏开局条件。不要以静态题目覆盖该门禁后对公网发布。
 
 ## 架构
 
@@ -11,11 +13,12 @@ Internet → Caddy :443 → app :3000 → SQLite persistent volume
 ## 必要配置
 
 1. DNS将`DOMAIN`指向服务器。
-2. 生成至少32字节随机`SESSION_HMAC_KEY`和至少24字节`METRICS_TOKEN`。
+2. 生成至少32字节随机`SESSION_HMAC_KEY`。需要暴露指标时再配置至少24字节`METRICS_TOKEN`；省略后`/api/metrics`不启用。
 3. 配置DeepSeek或GLM至少一个API Key；生产禁止Mock AI。
-4. 确保持久卷和备份目标受到访问控制。
+4. 实现并配置经批准的知乎核验网关；默认`TOPIC_MODE=verified`会在网关缺失时拒绝启动。
+5. 确保持久卷和备份目标受到访问控制。
 
-不要把生产环境变量写入仓库。复制字段名自行建立服务器`.env`，然后运行：
+不要把生产环境变量写入仓库。真实知乎网关完成后，复制字段名自行建立服务器`.env`，然后运行：
 
 ```sh
 docker compose build
@@ -36,7 +39,7 @@ npm run build
 npm run smoke:prod
 ```
 
-生产冒烟会启动真正的`NODE_ENV=production`服务器，检查首页、健康、指标认证、允许Origin的Socket入场及拒绝恶意Origin；使用占位模型凭据但不触发模型调用。
+生产冒烟会启动真正的`NODE_ENV=production`服务器，检查首页、健康、指标认证、允许Origin的Socket入场及拒绝恶意Origin；它显式启用“仅测试可用”的静态题目开关，并使用占位模型凭据但不触发开局或模型调用。该结果只验证基础设施。
 
 发布前先执行`docker compose exec app npm run backup -- /app/data/backups/pre-release.db`。更新应用后观察ready、错误率和AI失败率；失败时停止新版本、恢复应用镜像，数据库只在确认schema不兼容且经过演练时回滚备份。
 
@@ -52,10 +55,10 @@ npm run smoke:prod
 
 - 真实域名、证书、云防火墙和反向代理IP解析。
 - 真实DeepSeek/GLM调用、配额和内容安全。
-- 真实知乎题目核验能力。
+- 真实知乎题目核验能力（当前公开部署阻塞项）。
 - 手机与桌面多人完整时长对局。
 - 负载、断网、重启、磁盘不足和备份恢复演练。
 
 完成这些人工项前，容器可部署不等于公网生产验收完成。
 
-当前开发机没有Docker命令，因此本地未实际构建镜像。GitHub Actions已配置`docker build`和`docker compose config`作为远程验证；合并前必须确认对应检查通过。
+GitHub `main`的Verify工作流执行生产构建、生产进程冒烟、`docker build`和`docker compose config`；具体结果以仓库Actions页面为准。真实域名环境仍需单独验收。

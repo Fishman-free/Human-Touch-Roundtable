@@ -3,6 +3,8 @@ import test from "node:test";
 import { normalizeTopicPack, parseTopicPack } from "../src/topics/topic-pack.ts";
 import { VerifiedTopicProvider } from "../src/topics/verified-topic-provider.ts";
 import { CachedTopicProvider } from "../src/topics/cached-topic-provider.ts";
+import { createTopicProvider } from "../src/topics/config.ts";
+import { StaticTopicProvider } from "../src/topics/static-topic-provider.ts";
 
 const pack = {
   schemaVersion: 1, packId: "test-topic", source: "zhihu", curatedAt: "2026-09-10T00:00:00.000Z",
@@ -66,4 +68,13 @@ test("题目缓存按候选隔离、返回副本并在TTL后重新核验", async
   assert.equal(calls, 2);
   const aborted = new AbortController(); aborted.abort();
   await assert.rejects(cached.resolve("test-topic", aborted.signal), /ABORTED/);
+});
+
+test("题目环境组装开发默认静态，生产默认要求真实核验网关", () => {
+  assert.ok(createTopicProvider({}, true) instanceof StaticTopicProvider);
+  assert.throws(() => createTopicProvider({}, false), /ZHIHU_GATEWAY_NOT_CONFIGURED/);
+  assert.throws(() => createTopicProvider({ TOPIC_MODE: "static" }, false), /STATIC_TOPICS_NOT_ALLOWED_IN_PRODUCTION/);
+  assert.ok(createTopicProvider({ TOPIC_MODE: "static", ALLOW_STATIC_TOPICS_IN_PRODUCTION: "true" }, false)
+    instanceof StaticTopicProvider);
+  assert.throws(() => createTopicProvider({ TOPIC_MODE: "unknown" }, true), /INVALID_TOPIC_MODE/);
 });

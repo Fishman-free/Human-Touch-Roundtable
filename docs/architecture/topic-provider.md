@@ -38,6 +38,8 @@
 
 `ZhihuQuestionGateway`只描述项目真正需要的核验能力，不假定任何未确认HTTP路径。具体网关必须使用知乎批准的开放能力；禁止抓取网页冒充官方接口。
 
+`createTopicProvider`负责环境门禁：开发默认static；生产默认verified。当前没有具体`ZhihuQuestionGateway`实现，因此生产verified会明确拒绝启动；static只有同时设置`ALLOW_STATIC_TOPICS_IN_PRODUCTION=true`才可用于基础设施冒烟，不能用于公开游戏。
+
 ## 为什么仍未提供真实网关
 
 当前GitHub仓库没有Access Secret，已知开放平台文档也未确认“按问题ID取得最高赞回答及点赞排序”的端点。热榜/搜索可以作为发现或核验来源，但最高赞回答片段和共识仍应人工审核绑定到题目包。

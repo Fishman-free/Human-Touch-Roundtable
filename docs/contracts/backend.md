@@ -32,7 +32,7 @@ SocketGateway（结构校验、会话认证）
 
 `RoomRuntime.close()`先停止接受新命令，排空已经进入串行队列的命令，再取消本地定时器和AI/题目任务。服务关闭顺序仍为停止网络接入、关闭房间注册表、关闭数据库。
 
-`validateRoomRecord`对读取做结构/部分不变量校验，不应称为数据库所有损坏情形的完整证明。schema迁移与备份恢复需要额外测试。
+`validateRoomRecord`对读取做结构/部分不变量校验，不应称为数据库所有损坏情形的完整证明。schema v1→v2迁移和在线备份已有自动测试；真实进程升级、异地备份恢复和损坏介质演练仍需额外测试。
 
 ## 外部能力
 
@@ -42,7 +42,7 @@ SocketGateway（结构校验、会话认证）
 | AiProvider | AiRequest（matchId、phaseToken、seatId、动作、截止、私有上下文）+ AbortSignal | AiCommand；类型/目标/阶段仍由核心校验 |
 | Clock | now / setTimeout / clearTimeout | 可替换测试时钟；截止以服务端为准 |
 | RandomSource | integer(exclusiveMax) | [0,max)整数；生产使用crypto随机 |
-| SessionStore | create / find | 存摘要与viewer，禁止存明文secret |
+| SessionStore | create / find / touch / revoke / deleteExpired | 存摘要、viewer和生命周期，禁止存明文secret |
 
 AI失败不提前广播错误或默认来源，最终由阶段截止补默认回答/未投票。LLM供应商与结构化动作契约见[AI网关](../architecture/ai-gateway.md)。题目全部失败停留preparing并退避，不能把模拟题当成已验证的知乎材料。题目详细契约见[题目包与知乎接入边界](../architecture/topic-provider.md)。
 

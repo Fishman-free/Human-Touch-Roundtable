@@ -24,7 +24,8 @@ const child = spawn(process.execPath, ["server.ts"], {
   cwd: root, stdio: ["ignore", "pipe", "pipe"], env: {
     ...process.env, NODE_ENV: "production", PORT: String(port), DATABASE_PATH: join(directory, "smoke.db"),
     SESSION_HMAC_KEY: "production-smoke-session-key-32-bytes-minimum",
-    ALLOWED_ORIGINS: origin, TRUST_PROXY_HOPS: "0", AI_MODE: "live",
+    ALLOWED_ORIGINS: origin, TRUST_PROXY_HOPS: "0", TOPIC_MODE: "static",
+    ALLOW_STATIC_TOPICS_IN_PRODUCTION: "true", AI_MODE: "live",
     DEEPSEEK_API_KEY: "ci-placeholder-not-a-real-key", METRICS_TOKEN: "production-smoke-metrics-token",
   },
 });

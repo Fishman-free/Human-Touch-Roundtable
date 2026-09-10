@@ -4,7 +4,7 @@
 
 ## 存储模型
 
-使用Node 22内置`node:sqlite`，数据库schema版本为1。
+使用Node 22内置`node:sqlite`，数据库schema版本为2。它与TopicPack的`schemaVersion: 1`无关。
 
 ```text
 rooms
@@ -58,6 +58,7 @@ const context = createServerContext({
   sessionHmacKey: process.env.SESSION_HMAC_KEY!,
 }, { topics, ai, diagnose });
 
+await context.initialize();
 context.register(io);
 // 关闭HTTP/Socket接入后：
 await context.close();
