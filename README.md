@@ -50,6 +50,7 @@ SESSION_HMAC_KEY="至少32字节的稳定密钥" npm start
 - [公网安全边界](docs/architecture/security.md)：Origin、可信代理、限流和健康检查。
 - [题目包与知乎接入](docs/architecture/topic-provider.md)：TopicPack v1、核验网关和缓存边界。
 - [AI网关](docs/architecture/ai-gateway.md)：结构化Prompt、供应商切换、过滤和生产配置。
+- [可观测性与备份](docs/operations/observability.md)：脱敏日志、指标、健康检查和SQLite备份。
 - `src/game/model.ts`：服务端权威类型、动作与结果。
 - `src/game/transition.ts`：不可变状态转换和超时补全。
 - `src/game/settlement.ts`：普通人有效票与三方胜负。

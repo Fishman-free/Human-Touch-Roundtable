@@ -190,3 +190,18 @@ test("SQLite从schema 1迁移会话生命周期字段并保留旧会话", async 
     migrated.close();
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test("SQLite在线备份生成可独立打开的一致数据库", async () => {
+  const { directory, path } = await databasePath();
+  try {
+    const destination = join(directory, "backup.db");
+    const source = new SqlitePersistence(path);
+    assert.equal(await source.save("room", null, record()), true);
+    assert.equal(source.check(), true);
+    await source.backup(destination);
+    source.close();
+    const restored = new SqlitePersistence(destination);
+    assert.equal((await restored.load("room"))?.state.matchId, "match");
+    restored.close();
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

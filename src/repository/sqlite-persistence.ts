@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import { backup, DatabaseSync } from "node:sqlite";
 import type { RoomRecord, RoomStore, RoomSummary } from "../application/ports.ts";
 import type { Viewer } from "../game/projection.ts";
 import type { SessionRecord, SessionStore } from "../server/session.ts";
@@ -141,6 +141,16 @@ export class SqlitePersistence implements RoomStore, SessionStore {
   }
 
   close() { this.db.close(); }
+
+  check(): boolean {
+    const row = this.db.prepare("SELECT 1 AS ok").get() as Row;
+    return row.ok === 1;
+  }
+
+  async backup(path: string): Promise<void> {
+    if (!path || path === this.db.location()) throw new Error("INVALID_BACKUP_PATH");
+    await backup(this.db, path);
+  }
 
   private migrateFromZero() {
     this.db.exec(`
