@@ -22,6 +22,7 @@ const ids = {
   extra: "10000000-0000-4000-8000-000000000004",
 };
 const topic: Topic = {
+  provenance: { packId: "test-topic", source: "zhihu", curatedAt: "2026-09-10T00:00:00.000Z" },
   id: "123", title: "技术应当代替重复劳动吗？", url: "https://www.zhihu.com/question/123",
   topAnswerExcerpt: "重复劳动可以交给工具，判断仍需要人。", topConsensusSummary: "工具节省时间，责任仍在人。",
   defaults: {

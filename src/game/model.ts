@@ -11,6 +11,12 @@ export interface Topic {
   topAnswerExcerpt: string;
   topConsensusSummary: string;
   defaults: Record<Round, string[]>;
+  provenance?: {
+    packId: string;
+    source: "zhihu";
+    curatedAt: string;
+    verifiedAt?: string;
+  };
 }
 
 export interface Seat {

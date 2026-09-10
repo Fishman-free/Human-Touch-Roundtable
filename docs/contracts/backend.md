@@ -38,13 +38,13 @@ SocketGateway（结构校验、会话认证）
 
 | 端口 | 输入 | 返回/约束 |
 |---|---|---|
-| TopicProvider | 稳定candidateIds、resolve(id,AbortSignal) | 规范化Topic，必须由适配器核实真实来源；当前静态实现仅开发使用 |
+| TopicProvider | 稳定candidateIds、resolve(id,AbortSignal) | 规范化Topic；TopicPack负责结构，VerifiedTopicProvider负责官方网关核验，静态实现仅开发使用 |
 | AiProvider | AiRequest（matchId、phaseToken、seatId、动作、截止、私有上下文）+ AbortSignal | AiCommand；类型/目标/阶段仍由核心校验 |
 | Clock | now / setTimeout / clearTimeout | 可替换测试时钟；截止以服务端为准 |
 | RandomSource | integer(exclusiveMax) | [0,max)整数；生产使用crypto随机 |
 | SessionStore | create / find | 存摘要与viewer，禁止存明文secret |
 
-AI失败不提前广播错误或默认来源，最终由阶段截止补默认回答/未投票。题目全部失败停留preparing并退避，不能把模拟题当成已验证的知乎材料。
+AI失败不提前广播错误或默认来源，最终由阶段截止补默认回答/未投票。题目全部失败停留preparing并退避，不能把模拟题当成已验证的知乎材料。题目详细契约见[题目包与知乎接入边界](../architecture/topic-provider.md)。
 
 ## 会话语义
 
