@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { createServer } from "node:http";
 import next from "next";
 import { Server } from "socket.io";
-import { MockAiProvider } from "./src/ai/mock-ai-provider.ts";
+import { createAiProvider } from "./src/ai/config.ts";
 import { createServerContext } from "./src/server/server-context.ts";
 import type { ClientToServerEvents, ServerToClientEvents } from "./src/server/socket-contracts.ts";
 import { StaticTopicProvider } from "./src/topics/static-topic-provider.ts";
@@ -41,7 +41,7 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
 });
 const context = createServerContext({ databasePath, sessionHmacKey, socket: { trustedProxyHops } }, {
   topics: new StaticTopicProvider(),
-  ai: new MockAiProvider(),
+  ai: createAiProvider(process.env, development, event => console.error(JSON.stringify({ scope: "ai-attempt", ...event }))),
   diagnose: event => console.error(JSON.stringify({ scope: "game-runtime", ...event })),
 });
 await context.initialize();
