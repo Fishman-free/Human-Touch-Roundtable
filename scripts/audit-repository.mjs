@@ -4,9 +4,10 @@ import { resolve, relative } from 'node:path';
 // This allowlist defines the recommended first upload, independently of local
 // databases, third-party toolkits and planning originals.
 const root = resolve(import.meta.dirname, '..');
-const roots = ['src', 'tests', 'docs', 'scripts', 'public', '.github', 'README.md',
+const roots = ['src', 'tests', 'docs', 'scripts', 'public', 'deploy', '.github', 'README.md',
   'CONTRIBUTING.md', 'SECURITY.md', 'package.json', 'package-lock.json', 'tsconfig.json',
-  'next-env.d.ts', 'server.ts', '.env.example', '.gitignore', '.gitattributes', '.editorconfig'];
+  'next-env.d.ts', 'server.ts', 'Dockerfile', 'compose.yaml', '.dockerignore',
+  '.env.example', '.gitignore', '.gitattributes', '.editorconfig'];
 const suspect = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   /\bgh[pousr]_[A-Za-z0-9]{30,}\b/,
