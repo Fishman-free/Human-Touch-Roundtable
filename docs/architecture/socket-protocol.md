@@ -69,8 +69,8 @@ socket.emit("room:resume", { roomId, sessionToken }, callback);
 - `SESSION_HMAC_KEY`不得提交到仓库、发送到客户端或记录到日志。
 - Socket网关不直接接触私有GameState，只调用RoomRuntime的玩家视图与命令接口。
 - sessionToken是Bearer凭据；浏览器端后续应放在受控本地存储，并避免出现在URL、分析事件和截图中。
-- 当前实现没有来源域名、速率、消息频率和房间创建限流，这些必须在公网部署前补齐。
-- 当前没有HTTP/Next启动入口；测试直接创建HTTP与Socket.IO服务。
+- HTTP/Next/Socket共用`server.ts`入口；Origin精确匹配、消息大小、连接/建房/入场/命令限流和未认证超时已经实现，参数见[公网安全边界](security.md)。
+- 现有防护是单进程基础能力，真实反向代理地址解析、压力和外围DDoS防护仍需部署环境验收。
 
 ## 验证
 

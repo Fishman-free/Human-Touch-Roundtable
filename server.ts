@@ -6,7 +6,7 @@ import { Server } from "socket.io";
 import { createAiProvider } from "./src/ai/config.ts";
 import { createServerContext } from "./src/server/server-context.ts";
 import type { ClientToServerEvents, ServerToClientEvents } from "./src/server/socket-contracts.ts";
-import { StaticTopicProvider } from "./src/topics/static-topic-provider.ts";
+import { createTopicProvider } from "./src/topics/config.ts";
 import { handleOperationalRequest } from "./src/server/health.ts";
 import { parseOrigins, socketTransportOptions } from "./src/server/socket-security.ts";
 import { OperationalMonitor } from "./src/observability/monitor.ts";
@@ -49,7 +49,7 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
 });
 const context = createServerContext({ databasePath, sessionHmacKey,
   socket: { trustedProxyHops, onSecurityEvent: event => monitor.security(event) } }, {
-  topics: new StaticTopicProvider(),
+  topics: createTopicProvider(process.env, development),
   ai: createAiProvider(process.env, development, event => monitor.ai(event)),
   diagnose: event => monitor.runtime(event),
 });
