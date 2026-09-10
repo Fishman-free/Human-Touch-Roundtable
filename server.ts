@@ -30,6 +30,7 @@ const context = createServerContext({ databasePath, sessionHmacKey }, {
   ai: new MockAiProvider(),
   diagnose: event => console.error(JSON.stringify({ scope: "game-runtime", ...event })),
 });
+await context.initialize();
 context.register(io);
 
 await new Promise<void>((resolveListen, reject) => {

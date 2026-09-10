@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import type { RoomRecord, RoomStore } from "../application/ports.ts";
+import type { RoomRecord, RoomStore, RoomSummary } from "../application/ports.ts";
 import type { Viewer } from "../game/projection.ts";
 import type { SessionRecord, SessionStore } from "../server/session.ts";
 import { validateRoomRecord } from "./validate-room-record.ts";
@@ -65,6 +65,22 @@ export class SqlitePersistence implements RoomStore, SessionStore {
         .run(roomId, record.version, json, Date.now())
       : this.db.prepare("UPDATE rooms SET version = ?, record_json = ?, updated_at = ? WHERE room_id = ? AND version = ?")
         .run(record.version, json, Date.now(), roomId, expectedVersion);
+    return result.changes === 1 || result.changes === 1n;
+  }
+
+  async list(): Promise<RoomSummary[]> {
+    const rows = this.db.prepare("SELECT room_id, version, record_json, updated_at FROM rooms ORDER BY room_id").all() as Row[];
+    return rows.map(row => {
+      if (typeof row.room_id !== "string") throw new Error("CORRUPT_ROOM_RECORD");
+      const version = integer(row.version, "CORRUPT_ROOM_RECORD");
+      const record = roomRecord(row.record_json, version);
+      return { roomId: row.room_id, matchId: record.state.matchId, phase: record.state.phase,
+        version, updatedAt: integer(row.updated_at, "CORRUPT_ROOM_RECORD") };
+    });
+  }
+
+  async delete(roomId: string, expectedVersion: number): Promise<boolean> {
+    const result = this.db.prepare("DELETE FROM rooms WHERE room_id = ? AND version = ?").run(roomId, expectedVersion);
     return result.changes === 1 || result.changes === 1n;
   }
 

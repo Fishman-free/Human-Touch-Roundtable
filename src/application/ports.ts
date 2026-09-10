@@ -36,11 +36,21 @@ export interface RoomRecord {
   preparation: { candidateIndex: number; cycles: number; retryAt: number };
 }
 
+export interface RoomSummary {
+  roomId: string;
+  matchId: string;
+  phase: GameState["phase"];
+  version: number;
+  updatedAt: number;
+}
+
 // Atomically save the entire record, including state/log/receipts. False means
 // another writer won. An exception must mean no write was committed.
 export interface RoomStore {
   load(roomId: string): Promise<RoomRecord | null>;
   save(roomId: string, expectedVersion: number | null, record: RoomRecord): Promise<boolean>;
+  list(): Promise<RoomSummary[]>;
+  delete(roomId: string, expectedVersion: number): Promise<boolean>;
 }
 
 export interface TopicProvider {
@@ -65,7 +75,8 @@ export interface AiProvider {
 
 export type RoomView = ReturnType<typeof project>;
 export type DiagnosticKind = "topic-failed" | "ai-failed" | "ai-invalid" |
-  "storage-failed" | "room-conflict" | "subscriber-failed" | "runtime-failed";
+  "storage-failed" | "room-conflict" | "subscriber-failed" | "runtime-failed" |
+  "room-recovery-failed" | "room-cleanup-failed";
 export interface RuntimeDependencies {
   clock: Clock;
   random: RandomSource;

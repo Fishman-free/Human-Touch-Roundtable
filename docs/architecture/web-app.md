@@ -26,7 +26,7 @@ sessionToken保存在`sessionStorage`而非URL。同一标签页刷新后自动�
 
 ## 当前验收
 
-- `npm run check`：34项核心、运行时、Socket和SQLite自动测试通过。
+- `npm run check`：核心、运行时、Socket和SQLite全量自动测试通过。
 - `npm run build`：Next.js 16生产构建通过，首页静态预渲染成功。
 - 开发服务器首页返回HTTP 200。
 - Socket.IO polling握手返回HTTP 200，并声明可升级WebSocket，最大消息16 KiB。

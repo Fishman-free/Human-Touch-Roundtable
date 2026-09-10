@@ -146,3 +146,20 @@ test("SQLite拒绝结构合法但状态不完整或自相矛盾的房间JSON", a
     reopened.close();
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test("SQLite列出房间摘要并按版本删除，删除房间级联会话", async () => {
+  const db = new SqlitePersistence(":memory:");
+  assert.equal(await db.save("room", null, record()), true);
+  const session = { id: "session", roomId: "room", viewer: { kind: "spectator" } as const,
+    tokenHash: "hash", createdAt: 1 };
+  assert.equal(await db.create(session), true);
+  const summaries = await db.list();
+  assert.equal(summaries.length, 1);
+  assert.deepEqual({ roomId: summaries[0].roomId, matchId: summaries[0].matchId,
+    phase: summaries[0].phase, version: summaries[0].version },
+  { roomId: "room", matchId: "match", phase: "answering", version: 0 });
+  assert.equal(await db.delete("room", 1), false);
+  assert.equal(await db.delete("room", 0), true);
+  assert.equal(await db.find("session"), null);
+  db.close();
+});
