@@ -25,7 +25,7 @@
 
 推荐Node 22.23.2、npm 10，在WSL/Linux下执行命令。CI使用同一Node版本。不要上传`node_modules`；依赖变更同时提交package.json与锁文件。
 
-typecheck会先运行`next typegen`，首次克隆不需要先启动网页或复制他人的.next缓存。
+typecheck会先运行`next typegen`，再把Next受本地缓存影响的`next-env.d.ts`规范化为稳定生产路径；首次克隆不需要先启动网页或复制他人的.next缓存，检查后也不应产生该文件的差异。
 
 ## 当前限制
 
