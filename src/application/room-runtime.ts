@@ -34,6 +34,8 @@ export class RoomRuntime {
   private record: RoomRecord;
   private tail: Promise<void> = Promise.resolve();
   private closed = false;
+  private closing = false;
+  private closePromise?: Promise<void>;
   private conflict = false;
   private timers = new Set<() => void>();
   private cancelWake?: () => void;
@@ -74,6 +76,7 @@ export class RoomRuntime {
 
   // Trusted authenticated participant ID. Network payloads must never select actors.
   dispatch(participantId: string, request: PlayerRequest): Promise<CommandAck> {
+    if (this.closing || this.closed) return Promise.resolve(this.failure(request?.commandId ?? "", this.conflict ? "ROOM_CONFLICT" : "ROOM_CLOSED"));
     const input = structuredClone(request);
     return this.enqueue(async () => {
       if (this.closed) return this.failure(input.commandId, this.conflict ? "ROOM_CONFLICT" : "ROOM_CLOSED");
@@ -110,6 +113,7 @@ export class RoomRuntime {
   }
 
   sync(viewer: Viewer): Promise<RoomView> {
+    if (this.closing || this.closed) return Promise.reject(new Error(this.conflict ? "ROOM_CONFLICT" : "ROOM_CLOSED"));
     const identity = structuredClone(viewer);
     return this.enqueue(async () => {
       if (this.closed) throw new Error(this.conflict ? "ROOM_CONFLICT" : "ROOM_CLOSED");
@@ -119,7 +123,7 @@ export class RoomRuntime {
   }
 
   subscribe(viewer: Viewer, send: (view: RoomView) => void | Promise<void>): () => void {
-    if (this.closed) throw new Error("ROOM_CLOSED");
+    if (this.closing || this.closed) throw new Error("ROOM_CLOSED");
     const subscription = { viewer: structuredClone(viewer), send };
     this.subscribers.add(subscription);
     this.deliver(subscription);
@@ -127,8 +131,10 @@ export class RoomRuntime {
   }
 
   async close(): Promise<void> {
-    this.stop();
-    await this.tail;
+    if (this.closePromise) return this.closePromise;
+    this.closing = true;
+    this.closePromise = this.enqueue(async () => { this.stop(); });
+    return this.closePromise;
   }
 
   private enqueue<T>(action: () => Promise<T>): Promise<T> {
@@ -169,7 +175,8 @@ export class RoomRuntime {
   }
 
   private background(action: () => Promise<void>) {
-    void this.enqueue(async () => { if (!this.closed) await action(); }).catch(error => {
+    if (this.closing || this.closed) return;
+    void this.enqueue(async () => { if (!this.closing && !this.closed) await action(); }).catch(error => {
       if (this.closed) return;
       if (error instanceof StorageUnavailable) this.schedule(() => this.background(action), this.options.retryMs);
       else this.report("runtime-failed");

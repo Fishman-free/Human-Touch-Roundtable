@@ -6,6 +6,8 @@ import { assignSeats } from "../src/application/seat-assignment.ts";
 import type { Topic } from "../src/game/model.ts";
 import { roleCounts } from "../src/game/rules.ts";
 import { MemoryRoomStore } from "../src/repository/memory-room-store.ts";
+import { advanceTime } from "../src/game/transition.ts";
+import { RoomRegistry } from "../src/server/room-registry.ts";
 
 const topic: Topic = {
   id: "123", title: "技术应当代替重复劳动吗？", url: "https://www.zhihu.com/question/123",
@@ -100,8 +102,28 @@ class FailingStore implements RoomStore {
   readonly inner: MemoryRoomStore;
   constructor(inner = new MemoryRoomStore()) { this.inner = inner; }
   load(roomId: string) { return this.inner.load(roomId); }
+  list() { return this.inner.list(); }
+  delete(roomId: string, expectedVersion: number) { return this.inner.delete(roomId, expectedVersion); }
   save(roomId: string, expectedVersion: number | null, record: RoomRecord) {
     if (this.fail) { this.fail = false; throw new Error("DISK_DOWN"); }
+    return this.inner.save(roomId, expectedVersion, record);
+  }
+}
+
+class BlockingStore implements RoomStore {
+  readonly inner: MemoryRoomStore;
+  block = false;
+  entered?: () => void;
+  release?: () => void;
+  constructor(inner = new MemoryRoomStore()) { this.inner = inner; }
+  load(roomId: string) { return this.inner.load(roomId); }
+  list() { return this.inner.list(); }
+  delete(roomId: string, expectedVersion: number) { return this.inner.delete(roomId, expectedVersion); }
+  async save(roomId: string, expectedVersion: number | null, record: RoomRecord) {
+    if (this.block) {
+      this.block = false;
+      await new Promise<void>(resolve => { this.entered?.(); this.release = resolve; });
+    }
     return this.inner.save(roomId, expectedVersion, record);
   }
 }
@@ -315,4 +337,67 @@ test("两个运行时竞争同一房间时旧版本写入失败并关闭冲突�
   if (!closed.ok) assert.equal(closed.error, "ROOM_CONFLICT");
   await first.close();
   await second.close();
+});
+
+test("注册表启动时主动恢复无人连接的活动房间并补做截止", async () => {
+  const clock = new FakeClock();
+  const store = new MemoryRoomStore(() => clock.now());
+  const initial = await startRuntime({ clock, store, ai: new PassiveAi() });
+  await initial.runtime.close();
+  clock.advance(90_000);
+  const registry = new RoomRegistry(deps(clock, store, undefined, new PassiveAi()), {
+    topicTimeoutMs: 100, aiTimeoutMs: 100, retryMs: 10, topicBackoffMs: 20, topicMaxBackoffMs: 80,
+  }, { revealedRetentionMs: 1_000, cleanupIntervalMs: 100 });
+  await registry.initialize();
+  const recovered = await registry.get("room");
+  assert.ok(recovered);
+  assert.equal(recovered.view({ kind: "spectator" }).round, 2);
+  assert.equal(recovered.view({ kind: "spectator" }).answers[1].length, 3);
+  assert.equal((await store.load("room"))!.state.round, 2);
+  await registry.close();
+});
+
+test("注册表只清理超过保留期的终局，不删除活动房间", async () => {
+  const clock = new FakeClock();
+  const store = new MemoryRoomStore(() => clock.now());
+  const active = await startRuntime({ clock, store, ai: new PassiveAi() });
+  await active.runtime.close();
+  const stored = (await store.load("room"))!;
+  clock.value = 810_000;
+  stored.state = advanceTime(stored.state, clock.now());
+  const expectedVersion = stored.version;
+  stored.version++;
+  assert.equal(await store.save("room", expectedVersion, stored), true);
+  const other = structuredClone(stored);
+  other.state = { ...other.state, matchId: "active-match", phase: "lobby", phaseToken: 0,
+    revision: 0, lastNow: clock.now(), members: [], seats: [], topic: undefined, round: undefined,
+    answers: { 1: [], 2: [], 3: [] }, debate: undefined, deadlineAt: undefined, votes: [], log: [], result: undefined };
+  other.version = 0;
+  assert.equal(await store.save("active", null, other), true);
+  const registry = new RoomRegistry(deps(clock, store), {}, { revealedRetentionMs: 100, cleanupIntervalMs: 1_000 });
+  await registry.initialize();
+  await registry.cleanupExpired(clock.now() + 99);
+  assert.ok(await store.load("room"));
+  await registry.cleanupExpired(clock.now() + 100);
+  assert.equal(await store.load("room"), null);
+  assert.ok(await store.load("active"));
+  await registry.close();
+});
+
+test("优雅关闭排空已进入队列的命令，并立即拒绝新命令", async () => {
+  const clock = new FakeClock();
+  const store = new BlockingStore(new MemoryRoomStore(() => clock.now()));
+  const runtime = await RoomRuntime.open("closing", "match", deps(clock, store));
+  const entered = new Promise<void>(resolve => { store.entered = resolve; });
+  store.block = true;
+  const accepted = runtime.dispatch("p0", request(runtime, "accepted", { type: "join" }));
+  await entered;
+  const closing = runtime.close();
+  const rejected = await runtime.dispatch("p1", request(runtime, "late", { type: "join" }));
+  assert.equal(rejected.ok, false);
+  if (!rejected.ok) assert.equal(rejected.error, "ROOM_CLOSED");
+  store.release?.();
+  assert.equal((await accepted).ok, true);
+  await closing;
+  assert.equal((await store.load("closing"))!.state.members.length, 1);
 });

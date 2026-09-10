@@ -26,7 +26,11 @@ SocketGateway（结构校验、会话认证）
 
 同一参与者的同commandId和同载荷返回原回执；不同载荷拒绝。回执上限当前4096，不会自动清理后再执行旧命令。正式高频开放前还需限流。
 
-`RoomStore.save(roomId, expectedVersion, record)`必须原子写完整RoomRecord。返回false代表CAS冲突；抛异常必须代表没有成功提交。SQLite适配器将状态、日志、回执放在单行JSON中；SessionStore独立保存会话摘要，两者并非一个跨表入场事务。入场失败后的重试由相同请求身份与命令幂等兜底。
+`RoomStore.save(roomId, expectedVersion, record)`必须原子写完整RoomRecord；`list()`提供启动恢复/清理摘要；`delete(roomId, expectedVersion)`以CAS删除终局。返回false代表版本冲突；抛异常必须代表没有成功提交。SQLite适配器将状态、日志、回执放在单行JSON中；SessionStore独立保存会话摘要，两者并非一个跨表入场事务。入场失败后的重试由相同请求身份与命令幂等兜底。
+
+服务启动先调用`ServerContext.initialize()`：注册表枚举所有非终局房间，打开运行时并补做已过截止；因此无人重连时计时仍继续。终局默认保留24小时，每分钟执行一次CAS清理，删除房间时SQLite外键级联删除会话。两个时长可通过`ServerContextConfig.lifecycle`配置。
+
+`RoomRuntime.close()`先停止接受新命令，排空已经进入串行队列的命令，再取消本地定时器和AI/题目任务。服务关闭顺序仍为停止网络接入、关闭房间注册表、关闭数据库。
 
 `validateRoomRecord`对读取做结构/部分不变量校验，不应称为数据库所有损坏情形的完整证明。schema迁移与备份恢复需要额外测试。
 

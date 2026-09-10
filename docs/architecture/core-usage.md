@@ -58,7 +58,7 @@ const view = project(state, { kind: "participant", participantId: "authenticated
 
 ## 验证记录
 
-在WSL Ubuntu、Node.js v22.23.2环境执行`npm run check`：TypeScript严格检查通过；当前核心、运行时、网络和持久化共34项测试通过。
+在WSL Ubuntu、Node.js v22.23.2环境执行`npm run check`，严格类型检查与全量自动测试通过。
 
 已覆盖四档人数的整局、全员准备和题目校验、字数/立场校验、越权与重复提交、迟到动作、全员离线超时恢复、辩论顺序与8分钟截断、投票约束、三种胜负、有效票同时结算、玩家/观战身份隔离，以及快照序列化后的视图一致性。
 
