@@ -1,0 +1,32 @@
+node_modules/
+.next/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.db-journal
+*.tsbuildinfo
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+playwright-report/
+test-results/
+# Local runtime data may contain private roles, credentials and session mappings.
+/data/
+# Third-party local toolkit; do not republish without confirming its license.
+/zhihu/
+# Local planning/marketing originals. Maintained project specifications are in docs/.
+/*.md
+!/README.md
+!/CONTRIBUTING.md
+!/SECURITY.md
+/docs/github-upload.md
