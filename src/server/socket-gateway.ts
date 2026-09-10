@@ -1,10 +1,9 @@
 import type { Server, Socket } from "socket.io";
 import type { PlayerCommand, PlayerRequest, RoomView } from "../application/ports.ts";
-import type { Viewer } from "../game/projection.ts";
 import type { RoomRuntime } from "../application/room-runtime.ts";
-import { RoomRegistry } from "./room-registry.ts";
-import { SessionService, type SessionRecord } from "./session.ts";
-import type { ClientToServerEvents, JoinMode, ServerToClientEvents, SessionError, SessionResult, SocketCommandAck } from "./socket-contracts.ts";
+import type { SessionRecord } from "./session.ts";
+import { AdmissionService, type AdmissionResult } from "./admission-service.ts";
+import type { ClientToServerEvents, JoinMode, ServerToClientEvents, SessionResult, SocketCommandAck } from "./socket-contracts.ts";
 
 type GameServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type GameSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -28,7 +27,7 @@ function base(value: ObjectValue) {
     typeof value.matchId === "string" && value.matchId.length >= 1 && value.matchId.length <= 128 &&
     Number.isSafeInteger(value.phaseToken) && (value.phaseToken as number) >= 0;
 }
-function commandAck(commandId: unknown, revision: number, error: "NOT_JOINED" | "INVALID_INPUT" | "ROOM_UNAVAILABLE"): SocketCommandAck {
+function commandAck(commandId: unknown, revision: number, error: "NOT_JOINED" | "INVALID_SESSION" | "INVALID_INPUT" | "ROOM_UNAVAILABLE"): SocketCommandAck {
   return { commandId: typeof commandId === "string" ? commandId : "", revision, ok: false, error };
 }
 
@@ -36,13 +35,11 @@ export class SocketGateway {
   private connections = new Map<string, Connection>();
   private activeSessions = new Map<string, GameSocket>();
   private io: GameServer;
-  private rooms: RoomRegistry;
-  private sessions: SessionService;
+  private admissions: AdmissionService;
 
-  constructor(io: GameServer, rooms: RoomRegistry, sessions: SessionService) {
+  constructor(io: GameServer, admissions: AdmissionService) {
     this.io = io;
-    this.rooms = rooms;
-    this.sessions = sessions;
+    this.admissions = admissions;
   }
 
   register() {
@@ -53,36 +50,30 @@ export class SocketGateway {
     socket.on("room:create", (input, ack) => this.handleSession(ack, async () => {
       const parsed = this.admission(input);
       if (!parsed) return { ok: false, error: "INVALID_INPUT" };
-      const runtime = await this.rooms.create(parsed.roomId);
-      if (!runtime) return { ok: false, error: "ROOM_EXISTS" };
-      return this.admit(socket, runtime, parsed.roomId, parsed.mode, parsed.requestId);
+      return this.finishAdmission(socket, await this.admissions.create(parsed.roomId, parsed.mode, parsed.requestId));
     }));
 
     socket.on("room:join", (input, ack) => this.handleSession(ack, async () => {
       const parsed = this.admission(input);
       if (!parsed) return { ok: false, error: "INVALID_INPUT" };
-      const runtime = await this.rooms.get(parsed.roomId);
-      if (!runtime) return { ok: false, error: "ROOM_NOT_FOUND" };
-      return this.admit(socket, runtime, parsed.roomId, parsed.mode, parsed.requestId);
+      return this.finishAdmission(socket, await this.admissions.join(parsed.roomId, parsed.mode, parsed.requestId));
     }));
 
     socket.on("room:resume", (input, ack) => this.handleSession(ack, async () => {
       if (!object(input) || !exact(input, ["roomId", "sessionToken"]) || !roomId(input.roomId) ||
         typeof input.sessionToken !== "string") return { ok: false, error: "INVALID_INPUT" };
-      const session = await this.sessions.verify(input.roomId, input.sessionToken);
-      if (!session) return { ok: false, error: "INVALID_SESSION" };
-      const runtime = await this.rooms.get(input.roomId);
-      if (!runtime) return { ok: false, error: "ROOM_NOT_FOUND" };
-      const view = await this.attach(socket, runtime, session);
-      return { ok: true, roomId: input.roomId, sessionToken: input.sessionToken, view };
+      return this.finishAdmission(socket, await this.admissions.resume(input.roomId, input.sessionToken));
     }));
 
     socket.on("room:sync", ack => {
       if (typeof ack !== "function") return;
       const connection = this.connections.get(socket.id);
       if (!connection) { ack({ ok: false, error: "NOT_JOINED" }); return; }
-      void connection.runtime.sync(connection.session.viewer)
-        .then(view => ack({ ok: true, view }), () => ack({ ok: false, error: "ROOM_UNAVAILABLE" }));
+      void this.admissions.authorize(connection.session.id).then(active => {
+        if (!active) { ack({ ok: false, error: "INVALID_SESSION" }); this.detach(socket); socket.disconnect(true); return; }
+        connection.session = active;
+        return connection.runtime.sync(active.viewer).then(view => ack({ ok: true, view }));
+      }).catch(() => ack({ ok: false, error: "ROOM_UNAVAILABLE" }));
     });
 
     this.onCommand(socket, "room:ready", input => object(input) && exact(input, ["commandId", "matchId", "phaseToken", "ready"]) &&
@@ -118,22 +109,10 @@ export class SocketGateway {
       ? { requestId: input.requestId, roomId: input.roomId, mode: input.mode } : null;
   }
 
-  private async admit(socket: GameSocket, runtime: RoomRuntime, id: string, joinMode: JoinMode, admissionId: string): Promise<SessionResult> {
-    const viewer: Viewer = joinMode === "player"
-      ? { kind: "participant", participantId: this.sessions.participantId(id, admissionId) }
-      : { kind: "spectator" };
-    const issued = await this.sessions.issue(id, viewer, admissionId);
-    if (viewer.kind === "participant") {
-      const current = runtime.view({ kind: "spectator" });
-      const result = await runtime.dispatch(viewer.participantId, {
-        commandId: `admit_${issued.session.id}`, matchId: current.matchId,
-        // Admission retries must keep the original lobby token even after start.
-        phaseToken: 0, command: { type: "join" },
-      });
-      if (!result.ok) return { ok: false, error: this.sessionError(result.error) };
-    }
-    const view = await this.attach(socket, runtime, issued.session);
-    return { ok: true, roomId: id, sessionToken: issued.token, view };
+  private async finishAdmission(socket: GameSocket, result: AdmissionResult): Promise<SessionResult> {
+    if (!result.ok) return result;
+    const view = await this.attach(socket, result.runtime, result.session);
+    return { ok: true, roomId: result.roomId, sessionToken: result.token, view };
   }
 
   private async attach(socket: GameSocket, runtime: RoomRuntime, session: SessionRecord): Promise<RoomView> {
@@ -146,7 +125,15 @@ export class SocketGateway {
       previous.emit("session:replaced");
       previous.disconnect(true);
     }
-    const unsubscribe = runtime.subscribe(session.viewer, state => { socket.emit("room:state", state); });
+    const unsubscribe = runtime.subscribe(session.viewer, state => {
+      void this.admissions.authorize(session.id).then(active => {
+        const connection = this.connections.get(socket.id);
+        if (!connection || connection.session.id !== session.id) return;
+        if (!active) { this.detach(socket); socket.disconnect(true); return; }
+        connection.session = active;
+        socket.emit("room:state", state);
+      }).catch(() => {});
+    });
     this.connections.set(socket.id, { runtime, session, unsubscribe });
     this.activeSessions.set(session.id, socket);
     return view;
@@ -176,12 +163,16 @@ export class SocketGateway {
       }
       const command = parse(input);
       if (!command || !object(input)) { ack(commandAck(object(input) ? input.commandId : "", revision, "INVALID_INPUT")); return; }
-      const request: PlayerRequest = {
-        commandId: input.commandId as string, matchId: input.matchId as string,
-        phaseToken: input.phaseToken as number, command,
-      };
-      void connection.runtime.dispatch(connection.session.viewer.participantId, request)
-        .then(ack, () => ack(commandAck(request.commandId, revision, "ROOM_UNAVAILABLE")));
+      const request: PlayerRequest = { commandId: input.commandId as string, matchId: input.matchId as string,
+        phaseToken: input.phaseToken as number, command };
+      void this.admissions.authorize(connection.session.id).then(active => {
+        if (!active || active.viewer.kind !== "participant") {
+          ack(commandAck(request.commandId, revision, "INVALID_SESSION"));
+          this.detach(socket); socket.disconnect(true); return;
+        }
+        connection.session = active;
+        return connection.runtime.dispatch(active.viewer.participantId, request).then(ack);
+      }).catch(() => ack(commandAck(request.commandId, revision, "ROOM_UNAVAILABLE")));
     }) as never);
   }
 
@@ -190,9 +181,4 @@ export class SocketGateway {
     void action().then(ack, () => ack({ ok: false, error: "ROOM_UNAVAILABLE" }));
   }
 
-  private sessionError(error: string): SessionError {
-    if (error === "STALE_PHASE") return "WRONG_PHASE";
-    if (["STORAGE_UNAVAILABLE", "ROOM_CONFLICT", "FORBIDDEN", "ROOM_FULL", "WRONG_PHASE"].includes(error)) return error as SessionError;
-    return "ROOM_UNAVAILABLE";
-  }
 }

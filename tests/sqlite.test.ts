@@ -75,7 +75,7 @@ test("SQLite关闭重开后恢复私有房间、会话摘要，并补做截止�
 
     const second = new SqlitePersistence(path);
     assert.deepEqual((await second.load("room"))!.state.seats.map(seat => seat.role), ["human", "shadow", "ai"]);
-    assert.deepEqual((await new SessionService(second, Buffer.alloc(32, 3)).verify("room", issued.token))?.viewer,
+    assert.deepEqual((await new SessionService(second, Buffer.alloc(32, 3), () => 10).verify("room", issued.token))?.viewer,
       { kind: "participant", participantId: "p0" });
     const clock = new FixedClock();
     clock.value = 90_000;
@@ -120,7 +120,7 @@ test("两个SQLite连接使用CAS版本更新，落后写者不能覆盖新状�
 test("SQLite会话主键幂等且房间外键阻止孤立会话", async () => {
   const db = new SqlitePersistence(":memory:");
   const session = { id: "session", roomId: "missing", viewer: { kind: "spectator" } as const,
-    tokenHash: "hash", createdAt: 1 };
+    tokenHash: "hash", createdAt: 1, expiresAt: 1_001, lastSeenAt: 1, revokedAt: null };
   await assert.rejects(db.create(session));
   assert.equal(await db.save("room", null, record()), true);
   const valid = { ...session, roomId: "room" };
@@ -151,7 +151,7 @@ test("SQLite列出房间摘要并按版本删除，删除房间级联会话", as
   const db = new SqlitePersistence(":memory:");
   assert.equal(await db.save("room", null, record()), true);
   const session = { id: "session", roomId: "room", viewer: { kind: "spectator" } as const,
-    tokenHash: "hash", createdAt: 1 };
+    tokenHash: "hash", createdAt: 1, expiresAt: 1_001, lastSeenAt: 1, revokedAt: null };
   assert.equal(await db.create(session), true);
   const summaries = await db.list();
   assert.equal(summaries.length, 1);
@@ -162,4 +162,30 @@ test("SQLite列出房间摘要并按版本删除，删除房间级联会话", as
   assert.equal(await db.delete("room", 0), true);
   assert.equal(await db.find("session"), null);
   db.close();
+});
+
+test("SQLite从schema 1迁移会话生命周期字段并保留旧会话", async () => {
+  const { directory, path } = await databasePath();
+  try {
+    const raw = new DatabaseSync(path);
+    raw.exec(`
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE rooms (room_id TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL,
+        record_json TEXT NOT NULL, updated_at INTEGER NOT NULL) STRICT;
+      CREATE TABLE sessions (id TEXT PRIMARY KEY NOT NULL, room_id TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE,
+        viewer_json TEXT NOT NULL, token_hash TEXT NOT NULL, created_at INTEGER NOT NULL) STRICT;
+      PRAGMA user_version = 1;
+    `);
+    raw.prepare("INSERT INTO rooms(room_id, version, record_json, updated_at) VALUES (?, ?, ?, ?)")
+      .run("room", 0, JSON.stringify(record()), 1);
+    raw.prepare("INSERT INTO sessions(id, room_id, viewer_json, token_hash, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run("legacy", "room", JSON.stringify({ kind: "spectator" }), "hash", 10);
+    raw.close();
+    const migrated = new SqlitePersistence(path);
+    const session = await migrated.find("legacy");
+    assert.equal(session?.lastSeenAt, 10);
+    assert.equal(session?.expiresAt, 4_102_444_800_000);
+    assert.equal(session?.revokedAt, null);
+    migrated.close();
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

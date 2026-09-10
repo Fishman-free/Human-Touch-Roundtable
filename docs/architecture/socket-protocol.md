@@ -31,6 +31,8 @@ socket.emit("room:resume", { roomId, sessionToken }, callback);
 
 凭据有效时恢复玩家或观战身份，并返回最新视图。同一会话只允许最新连接写入：新连接会让旧连接收到`session:replaced`，随后服务端断开旧连接。
 
+会话默认48小时到期，服务端保存`expiresAt`、`lastSeenAt`和可选`revokedAt`。命令、同步和状态广播都会重新确认会话；到期或撤销后现有连接也会停止读写并断开。最近活动时间最多每分钟持久化一次，过期/撤销记录默认每小时清理。
+
 断线不会调用退出游戏或释放座位。测试可使用`MemorySessionStore`；生产组装使用`SqlitePersistence`恢复跨进程会话。
 
 ## 状态同步

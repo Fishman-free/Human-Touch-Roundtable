@@ -9,6 +9,7 @@ import { MemoryRoomStore } from "../src/repository/memory-room-store.ts";
 import { RoomRegistry } from "../src/server/room-registry.ts";
 import { MemorySessionStore, SessionService } from "../src/server/session.ts";
 import { SocketGateway } from "../src/server/socket-gateway.ts";
+import { AdmissionService } from "../src/server/admission-service.ts";
 import type { ClientToServerEvents, ServerToClientEvents, SessionResult, SocketCommandAck, SyncResult } from "../src/server/socket-contracts.ts";
 import { systemClock } from "../src/server/runtime-dependencies.ts";
 
@@ -51,7 +52,7 @@ async function harness() {
     topicTimeoutMs: 100, aiTimeoutMs: 100, retryMs: 10, topicBackoffMs: 20, topicMaxBackoffMs: 80,
   });
   const sessions = new SessionService(new MemorySessionStore(), Buffer.alloc(32, 7));
-  new SocketGateway(io, rooms, sessions).register();
+  new SocketGateway(io, new AdmissionService(rooms, sessions)).register();
   await new Promise<void>(resolve => http.listen(0, "127.0.0.1", resolve));
   const address = http.address();
   assert(address && typeof address === "object");
@@ -218,7 +219,7 @@ test("会话凭据可跨服务实例验证，错误房间和篡改密钥均失�
   const issued = await first.issue("room", { kind: "participant", participantId }, ids.first);
   const repeated = await first.issue("room", { kind: "participant", participantId }, ids.first);
   assert.equal(repeated.token, issued.token);
-  const restored = await new SessionService(store, key).verify("room", issued.token);
+  const restored = await new SessionService(store, key, () => 123).verify("room", issued.token);
   assert.deepEqual(restored?.viewer, { kind: "participant", participantId });
   assert.equal(await first.verify("other", issued.token), null);
   assert.equal(await first.verify("room", `${issued.token}x`), null);
@@ -237,4 +238,25 @@ test("加入requestId只能在短期幂等窗口内重新换取会话Token", asy
   now = 1_001;
   await assert.rejects(sessions.issue("room", viewer, ids.first), /ADMISSION_EXPIRED/);
   assert.deepEqual((await sessions.verify("room", issued.token))?.viewer, viewer);
+});
+
+test("会话更新最近活动时间，到期或撤销后拒绝并可清理", async () => {
+  const store = new MemorySessionStore();
+  let now = 0;
+  const sessions = new SessionService(store, Buffer.alloc(32, 5), () => now, 100, 1_000, 50);
+  const viewer = { kind: "spectator" } as const;
+  const issued = await sessions.issue("room", viewer, ids.first);
+  now = 49;
+  assert.equal((await sessions.authorize(issued.session.id))?.lastSeenAt, 0);
+  now = 50;
+  assert.equal((await sessions.authorize(issued.session.id))?.lastSeenAt, 50);
+  assert.equal(await sessions.revoke(issued.session.id), true);
+  assert.equal(await sessions.verify("room", issued.token), null);
+  assert.equal(await sessions.cleanupExpired(), 1);
+  assert.equal(await store.find(issued.session.id), null);
+
+  const other = await sessions.issue("room", viewer, ids.second);
+  now = 1_050;
+  assert.equal(await sessions.verify("room", other.token), null);
+  assert.equal(await sessions.cleanupExpired(), 1);
 });
