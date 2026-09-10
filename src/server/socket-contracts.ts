@@ -2,16 +2,17 @@ import type { CommandAck, RoomView } from "../application/ports.ts";
 
 export type JoinMode = "player" | "spectator";
 export type SessionError = "INVALID_INPUT" | "ROOM_NOT_FOUND" | "ROOM_EXISTS" | "ROOM_UNAVAILABLE" |
-  "INVALID_SESSION" | "STORAGE_UNAVAILABLE" | "ROOM_CONFLICT" | "FORBIDDEN" | "ROOM_FULL" | "WRONG_PHASE";
+  "INVALID_SESSION" | "STORAGE_UNAVAILABLE" | "ROOM_CONFLICT" | "FORBIDDEN" | "ROOM_FULL" | "WRONG_PHASE" |
+  "RATE_LIMITED";
 export type SessionResult = { ok: true; roomId: string; sessionToken: string; view: RoomView } |
   { ok: false; error: SessionError };
 export type SyncResult = { ok: true; view: RoomView } |
-  { ok: false; error: "NOT_JOINED" | "INVALID_SESSION" | "ROOM_UNAVAILABLE" };
+  { ok: false; error: "NOT_JOINED" | "INVALID_SESSION" | "ROOM_UNAVAILABLE" | "RATE_LIMITED" };
 export type SocketCommandAck = CommandAck | {
   commandId: string;
   revision: number;
   ok: false;
-  error: "NOT_JOINED" | "INVALID_SESSION" | "INVALID_INPUT" | "ROOM_UNAVAILABLE";
+  error: "NOT_JOINED" | "INVALID_SESSION" | "INVALID_INPUT" | "ROOM_UNAVAILABLE" | "RATE_LIMITED";
 };
 
 export type CommandBase = { commandId: string; matchId: string; phaseToken: number };
@@ -33,4 +34,6 @@ export interface ClientToServerEvents {
 export interface ServerToClientEvents {
   "room:state": (view: RoomView) => void;
   "session:replaced": () => void;
+  "session:expired": () => void;
+  "server:error": (error: "CONNECTION_LIMIT") => void;
 }

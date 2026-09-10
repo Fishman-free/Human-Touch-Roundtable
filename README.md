@@ -47,6 +47,7 @@ SESSION_HMAC_KEY="至少32字节的稳定密钥" npm start
 - [Socket与会话协议](docs/architecture/socket-protocol.md)：入场、重连、接管和网络事件。
 - [SQLite持久化](docs/architecture/sqlite-persistence.md)：schema、CAS、恢复和部署边界。
 - [前端扩展边界](docs/architecture/frontend-extension.md)：主题、展示配置、组件和客户端会话职责。
+- [公网安全边界](docs/architecture/security.md)：Origin、可信代理、限流和健康检查。
 - `src/game/model.ts`：服务端权威类型、动作与结果。
 - `src/game/transition.ts`：不可变状态转换和超时补全。
 - `src/game/settlement.ts`：普通人有效票与三方胜负。

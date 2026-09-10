@@ -12,6 +12,7 @@ import { SocketGateway } from "../src/server/socket-gateway.ts";
 import { AdmissionService } from "../src/server/admission-service.ts";
 import type { ClientToServerEvents, ServerToClientEvents, SessionResult, SocketCommandAck, SyncResult } from "../src/server/socket-contracts.ts";
 import { systemClock } from "../src/server/runtime-dependencies.ts";
+import type { SocketGatewayOptions } from "../src/server/socket-gateway.ts";
 
 type ClientSocket = ClientSocketType<ServerToClientEvents, ClientToServerEvents>;
 const ids = {
@@ -44,7 +45,7 @@ function socketEvent(socket: ClientSocket, event: "connect" | "disconnect" | "se
   return new Promise(resolve => socket.once(event, () => resolve()));
 }
 
-async function harness() {
+async function harness(gatewayOptions: Partial<SocketGatewayOptions> = {}) {
   const http = createServer();
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(http);
   const store = new MemoryRoomStore();
@@ -52,7 +53,7 @@ async function harness() {
     topicTimeoutMs: 100, aiTimeoutMs: 100, retryMs: 10, topicBackoffMs: 20, topicMaxBackoffMs: 80,
   });
   const sessions = new SessionService(new MemorySessionStore(), Buffer.alloc(32, 7));
-  new SocketGateway(io, new AdmissionService(rooms, sessions)).register();
+  new SocketGateway(io, new AdmissionService(rooms, sessions), gatewayOptions).register();
   await new Promise<void>(resolve => http.listen(0, "127.0.0.1", resolve));
   const address = http.address();
   assert(address && typeof address === "object");
@@ -224,6 +225,27 @@ test("会话凭据可跨服务实例验证，错误房间和篡改密钥均失�
   assert.equal(await first.verify("other", issued.token), null);
   assert.equal(await first.verify("room", `${issued.token}x`), null);
   assert.throws(() => new SessionService(store, "short"), /SESSION_KEY_TOO_SHORT/);
+});
+
+test("Socket按会话限制命令频率", async () => {
+  const app = await harness({ command: { limit: 1, windowMs: 60_000 } });
+  try {
+    const client = await app.connect();
+    const created = await ack<SessionResult>(done => client.emit("room:create", {
+      requestId: ids.first, roomId: "limited", mode: "player",
+    }, done));
+    assert.ok(created.ok);
+    if (!created.ok) return;
+    const first = await ack<SocketCommandAck>(done => client.emit("room:ready", {
+      commandId: "first", matchId: created.view.matchId, phaseToken: created.view.phaseToken, ready: true,
+    }, done));
+    assert.equal(first.ok, true);
+    const second = await ack<SocketCommandAck>(done => client.emit("room:ready", {
+      commandId: "second", matchId: created.view.matchId, phaseToken: created.view.phaseToken, ready: false,
+    }, done));
+    assert.equal(second.ok, false);
+    if (!second.ok) assert.equal(second.error, "RATE_LIMITED");
+  } finally { await app.close(); }
 });
 
 test("加入requestId只能在短期幂等窗口内重新换取会话Token", async () => {

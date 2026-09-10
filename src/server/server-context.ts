@@ -7,6 +7,7 @@ import { SocketGateway } from "./socket-gateway.ts";
 import type { ClientToServerEvents, ServerToClientEvents } from "./socket-contracts.ts";
 import { secureRandom, systemClock } from "./runtime-dependencies.ts";
 import { AdmissionService } from "./admission-service.ts";
+import type { SocketGatewayOptions } from "./socket-gateway.ts";
 
 export interface ServerContextConfig {
   databasePath: string;
@@ -14,6 +15,7 @@ export interface ServerContextConfig {
   runtime?: Partial<RuntimeOptions>;
   lifecycle?: Partial<RoomLifecycleOptions>;
   session?: { admissionTtlMs?: number; sessionTtlMs?: number; touchIntervalMs?: number; cleanupIntervalMs?: number };
+  socket?: Partial<Omit<SocketGatewayOptions, "clock">>;
 }
 
 export function createServerContext(config: ServerContextConfig, providers: {
@@ -60,7 +62,7 @@ export function createServerContext(config: ServerContextConfig, providers: {
     register(io: Server<ClientToServerEvents, ServerToClientEvents>) {
       if (closed || registered || !initialized) throw new Error(closed ? "SERVER_CONTEXT_CLOSED" : registered
         ? "SOCKET_GATEWAY_ALREADY_REGISTERED" : "SERVER_CONTEXT_NOT_INITIALIZED");
-      new SocketGateway(io, admissions).register();
+      new SocketGateway(io, admissions, { clock: systemClock, ...config.socket }).register();
       registered = true;
     },
     async close() {
