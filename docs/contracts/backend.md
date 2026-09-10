@@ -44,7 +44,7 @@ SocketGateway（结构校验、会话认证）
 | RandomSource | integer(exclusiveMax) | [0,max)整数；生产使用crypto随机 |
 | SessionStore | create / find | 存摘要与viewer，禁止存明文secret |
 
-AI失败不提前广播错误或默认来源，最终由阶段截止补默认回答/未投票。题目全部失败停留preparing并退避，不能把模拟题当成已验证的知乎材料。题目详细契约见[题目包与知乎接入边界](../architecture/topic-provider.md)。
+AI失败不提前广播错误或默认来源，最终由阶段截止补默认回答/未投票。LLM供应商与结构化动作契约见[AI网关](../architecture/ai-gateway.md)。题目全部失败停留preparing并退避，不能把模拟题当成已验证的知乎材料。题目详细契约见[题目包与知乎接入边界](../architecture/topic-provider.md)。
 
 ## 会话语义
 
