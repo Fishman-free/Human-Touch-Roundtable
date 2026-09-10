@@ -1,6 +1,6 @@
 # SQLite持久化
 
-> 2026-09-10：SQLite房间与会话适配器已实现并通过关闭重开测试。
+> 2026-09-10：SQLite房间与会话适配器已实现并通过关闭重开测试。当前schema版本为2。
 
 ## 存储模型
 
@@ -19,6 +19,9 @@ sessions
   viewer_json   TEXT
   token_hash    TEXT
   created_at    INTEGER
+  expires_at    INTEGER
+  last_seen_at  INTEGER
+  revoked_at    INTEGER NULL
 ```
 
 一个房间的私有状态、公开日志、命令回执和题目退避位置位于同一个`record_json`。更新使用单条带版本条件的SQL，因此整体原子提交；不会出现状态已更新但回执或日志尚未保存的中间状态。
@@ -64,10 +67,10 @@ await context.close();
 
 ## 恢复与迁移
 
-- 启动时自动创建schema 1；遇到未知schema版本直接拒绝启动。
+- 新库直接创建schema 2；schema 1会显式迁移会话生命周期字段；遇到未知版本直接拒绝启动。
 - 重新打开房间先加载完整私有记录，再由核心按绝对截止时间补推进。
 - JSON读取会检查数据库版本与记录版本一致，并做基础结构检查；损坏记录会显式报错，不尝试猜测修复。
-- 当前只有初始迁移。后续修改schema必须增加显式版本迁移，不能原地覆盖`user_version`。
+- 后续修改schema必须继续增加显式版本迁移，不能原地覆盖`user_version`。
 
 Node 22将`node:sqlite`标记为实验性API，测试时会显示警告。当前项目以Node 22.18+为运行基线；升级Node大版本前需要重新运行全部数据库测试。
 

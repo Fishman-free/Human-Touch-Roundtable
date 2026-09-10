@@ -76,7 +76,7 @@ export interface AiProvider {
 export type RoomView = ReturnType<typeof project>;
 export type DiagnosticKind = "topic-failed" | "ai-failed" | "ai-invalid" |
   "storage-failed" | "room-conflict" | "subscriber-failed" | "runtime-failed" |
-  "room-recovery-failed" | "room-cleanup-failed";
+  "room-recovery-failed" | "room-cleanup-failed" | "session-cleanup-failed";
 export interface RuntimeDependencies {
   clock: Clock;
   random: RandomSource;

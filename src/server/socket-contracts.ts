@@ -6,12 +6,12 @@ export type SessionError = "INVALID_INPUT" | "ROOM_NOT_FOUND" | "ROOM_EXISTS" | 
 export type SessionResult = { ok: true; roomId: string; sessionToken: string; view: RoomView } |
   { ok: false; error: SessionError };
 export type SyncResult = { ok: true; view: RoomView } |
-  { ok: false; error: "NOT_JOINED" | "ROOM_UNAVAILABLE" };
+  { ok: false; error: "NOT_JOINED" | "INVALID_SESSION" | "ROOM_UNAVAILABLE" };
 export type SocketCommandAck = CommandAck | {
   commandId: string;
   revision: number;
   ok: false;
-  error: "NOT_JOINED" | "INVALID_INPUT" | "ROOM_UNAVAILABLE";
+  error: "NOT_JOINED" | "INVALID_SESSION" | "INVALID_INPUT" | "ROOM_UNAVAILABLE";
 };
 
 export type CommandBase = { commandId: string; matchId: string; phaseToken: number };
