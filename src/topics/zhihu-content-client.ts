@@ -1,0 +1,94 @@
+export interface ZhihuHotItem { title: string; url: string; summary: string; thumbnailUrl: string }
+export interface ZhihuSearchItem {
+  title: string;
+  contentType: string;
+  contentId: string;
+  contentText: string;
+  url: string;
+  voteUpCount: number;
+  commentCount: number;
+  comments: string[];
+  rankingScore: number;
+}
+
+type Value = Record<string, unknown>;
+function object(value: unknown): value is Value { return typeof value === "object" && value !== null && !Array.isArray(value); }
+function text(value: unknown): string { if (typeof value !== "string") throw new Error("INVALID_ZHIHU_RESPONSE"); return value; }
+function number(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("INVALID_ZHIHU_RESPONSE");
+  return value;
+}
+
+export class ZhihuContentClient {
+  private secret: string;
+  private fetch: typeof globalThis.fetch;
+  private baseUrl: string;
+
+  constructor(config: { accessSecret: string; fetch?: typeof globalThis.fetch; baseUrl?: string }) {
+    if (!config.accessSecret) throw new Error("ZHIHU_ACCESS_SECRET_REQUIRED");
+    const url = new URL(config.baseUrl ?? "https://developer.zhihu.com/api/v1/content/");
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !url.pathname.endsWith("/")) {
+      throw new Error("INVALID_ZHIHU_BASE_URL");
+    }
+    this.secret = config.accessSecret;
+    this.fetch = config.fetch ?? globalThis.fetch;
+    this.baseUrl = url.toString();
+  }
+
+  async hot(limit: number, signal: AbortSignal): Promise<ZhihuHotItem[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 30) throw new Error("INVALID_ZHIHU_LIMIT");
+    const data = await this.request("hot_list", { Limit: String(limit) }, signal);
+    if (!Array.isArray(data.Items)) throw new Error("INVALID_ZHIHU_RESPONSE");
+    return data.Items.map(value => {
+      if (!object(value)) throw new Error("INVALID_ZHIHU_RESPONSE");
+      return { title: text(value.Title), url: text(value.Url), summary: text(value.Summary), thumbnailUrl: text(value.ThumbnailUrl) };
+    });
+  }
+
+  async search(query: string, count: number, signal: AbortSignal): Promise<ZhihuSearchItem[]> {
+    const clean = query.trim();
+    if (!clean || clean.length > 500 || !Number.isInteger(count) || count < 1 || count > 10) throw new Error("INVALID_ZHIHU_SEARCH");
+    const data = await this.request("zhihu_search", { Query: clean, Count: String(count) }, signal);
+    if (!Array.isArray(data.Items)) throw new Error("INVALID_ZHIHU_RESPONSE");
+    return data.Items.map(value => {
+      if (!object(value) || (value.CommentInfoList !== undefined && !Array.isArray(value.CommentInfoList))) throw new Error("INVALID_ZHIHU_RESPONSE");
+      return {
+        title: text(value.Title), contentType: text(value.ContentType), contentId: text(value.ContentID),
+        contentText: text(value.ContentText), url: text(value.Url), voteUpCount: number(value.VoteUpCount),
+        commentCount: number(value.CommentCount), rankingScore: number(value.RankingScore),
+        comments: (value.CommentInfoList ?? []).map(comment => {
+          if (!object(comment)) throw new Error("INVALID_ZHIHU_RESPONSE");
+          return text(comment.Content);
+        }),
+      };
+    });
+  }
+
+  private async request(path: string, query: Record<string, string>, signal: AbortSignal): Promise<Value> {
+    const url = new URL(path, this.baseUrl);
+    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+    const response = await this.fetch(url, { signal, headers: {
+      "authorization": `Bearer ${this.secret}`, "x-request-timestamp": String(Math.floor(Date.now() / 1_000)),
+      "accept": "application/json", "content-type": "application/json",
+    } });
+    if (!response.ok) throw new Error(`ZHIHU_HTTP_${response.status}`);
+    const declared = Number(response.headers.get("content-length") ?? 0);
+    if (declared > 2 * 1024 * 1024) throw new Error("ZHIHU_RESPONSE_TOO_LARGE");
+    const body = await response.text();
+    if (new TextEncoder().encode(body).length > 2 * 1024 * 1024) throw new Error("ZHIHU_RESPONSE_TOO_LARGE");
+    let envelope: unknown;
+    try { envelope = JSON.parse(body); } catch { throw new Error("INVALID_ZHIHU_RESPONSE"); }
+    if (!object(envelope) || envelope.Code !== 0 || envelope.Message !== "success" || !object(envelope.Data)) {
+      const code = object(envelope) && typeof envelope.Code === "number" ? envelope.Code : "INVALID";
+      throw new Error(`ZHIHU_API_${code}`);
+    }
+    return envelope.Data;
+  }
+}
+
+export function questionIdFromUrl(value: string): string | null {
+  let url: URL;
+  try { url = new URL(value); } catch { return null; }
+  if (url.protocol !== "https:" || url.hostname !== "www.zhihu.com") return null;
+  return /^\/question\/(\d+)(?:\/answer\/[^/]+)?\/?$/.exec(url.pathname)?.[1] ?? null;
+}

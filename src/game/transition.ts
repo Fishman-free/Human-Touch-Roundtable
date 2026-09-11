@@ -115,7 +115,10 @@ function validateTopic(topic: Topic) {
   requireRule(typeof topic.url === "string" && /^https:\/\/www\.zhihu\.com\/question\/\d+\/?$/.test(topic.url), "INVALID_INPUT");
   requireRule(topic.provenance && /^[a-z0-9][a-z0-9-]{2,79}$/.test(topic.provenance.packId) &&
     topic.provenance.source === "zhihu" && !Number.isNaN(Date.parse(topic.provenance.curatedAt)) &&
-    (topic.provenance.verifiedAt === undefined || !Number.isNaN(Date.parse(topic.provenance.verifiedAt))), "INVALID_INPUT");
+    (topic.provenance.verifiedAt === undefined || !Number.isNaN(Date.parse(topic.provenance.verifiedAt))) &&
+    (topic.provenance.selectedAnswerUrl === undefined || /^https:\/\/www\.zhihu\.com\/question\/\d+\/answer\/[^/?#]+/.test(topic.provenance.selectedAnswerUrl)) &&
+    (topic.provenance.selectedVoteUpCount === undefined || Number.isSafeInteger(topic.provenance.selectedVoteUpCount) &&
+      topic.provenance.selectedVoteUpCount >= 0), "INVALID_INPUT");
   for (const round of [1, 2, 3] as const) {
     const pool = topic.defaults?.[round];
     requireRule(Array.isArray(pool) && pool.length >= 2, "INVALID_INPUT");
