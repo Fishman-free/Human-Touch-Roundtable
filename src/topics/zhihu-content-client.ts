@@ -23,8 +23,11 @@ export class ZhihuContentClient {
   private secret: string;
   private fetch: typeof globalThis.fetch;
   private baseUrl: string;
+  private minRequestIntervalMs: number;
+  private queue: Promise<void> = Promise.resolve();
+  private nextRequestAt = 0;
 
-  constructor(config: { accessSecret: string; fetch?: typeof globalThis.fetch; baseUrl?: string }) {
+  constructor(config: { accessSecret: string; fetch?: typeof globalThis.fetch; baseUrl?: string; minRequestIntervalMs?: number }) {
     if (!config.accessSecret) throw new Error("ZHIHU_ACCESS_SECRET_REQUIRED");
     const url = new URL(config.baseUrl ?? "https://developer.zhihu.com/api/v1/content/");
     if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !url.pathname.endsWith("/")) {
@@ -33,6 +36,8 @@ export class ZhihuContentClient {
     this.secret = config.accessSecret;
     this.fetch = config.fetch ?? globalThis.fetch;
     this.baseUrl = url.toString();
+    this.minRequestIntervalMs = config.minRequestIntervalMs ?? 1_000;
+    if (!Number.isSafeInteger(this.minRequestIntervalMs) || this.minRequestIntervalMs < 0) throw new Error("INVALID_ZHIHU_REQUEST_INTERVAL");
   }
 
   async hot(limit: number, signal: AbortSignal): Promise<ZhihuHotItem[]> {
@@ -65,6 +70,21 @@ export class ZhihuContentClient {
   }
 
   private async request(path: string, query: Record<string, string>, signal: AbortSignal): Promise<Value> {
+    const job = this.queue.then(async () => {
+      const delay = Math.max(0, this.nextRequestAt - Date.now());
+      if (delay) await new Promise<void>((resolve, reject) => {
+        const handle = setTimeout(resolve, delay);
+        signal.addEventListener("abort", () => { clearTimeout(handle); reject(new Error("ABORTED")); }, { once: true });
+      });
+      if (signal.aborted) throw new Error("ABORTED");
+      this.nextRequestAt = Date.now() + this.minRequestIntervalMs;
+      return this.requestNow(path, query, signal);
+    });
+    this.queue = job.then(() => {}, () => {});
+    return job;
+  }
+
+  private async requestNow(path: string, query: Record<string, string>, signal: AbortSignal): Promise<Value> {
     const url = new URL(path, this.baseUrl);
     for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
     const response = await this.fetch(url, { signal, headers: {

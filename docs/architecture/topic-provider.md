@@ -40,18 +40,25 @@
 
 当前使用官方接口：`GET /api/v1/content/hot_list`与`GET /api/v1/content/zhihu_search`，均使用Bearer Access Secret和秒级`X-Request-Timestamp`。禁止抓取网页冒充官方接口。
 
-`createTopicProvider`负责环境门禁：开发默认static；生产默认verified并要求`ZHIHU_ACCESS_SECRET`。成功结果默认缓存6小时，可用`ZHIHU_TOPIC_CACHE_MS`调整。static只有同时设置`ALLOW_STATIC_TOPICS_IN_PRODUCTION=true`才可用于基础设施冒烟，不能用于公开游戏。
+`createTopicProvider`负责环境门禁：开发默认static；生产默认verified并要求`ZHIHU_ACCESS_SECRET`。成功结果默认在进程内缓存24小时，可用`ZHIHU_TOPIC_CACHE_MS`调整；同候选并发请求会合并。static只有同时设置`ALLOW_STATIC_TOPICS_IN_PRODUCTION=true`才可用于基础设施冒烟，不能用于公开游戏。
 
 ## 排序与覆盖限制
 
 搜索接口单次最多返回10条、`HasMore=false`，没有按赞同数排序参数。因此本局选择的是“本次搜索结果中，同问题回答的最高赞项”，不能宣称是全站绝对最高赞。题目包的共识、默认答案和内容适宜性仍需人工审核。
 
-2026-09-11已用真实Access Secret完成热榜、搜索和生产提供器单次核验；凭据未写入仓库。普通CI使用脱敏最小响应夹具，不发起在线请求。后续仍需验证长期额度、缓存许可、标题变化、内容授权和更多题目包。
+2026-09-11已用真实Access Secret完成热榜、搜索和生产提供器核验；凭据未写入仓库。当前账号实测知乎搜索额度为10次/日，当日批量验证在额度归零后停止，未循环重试。普通CI使用脱敏最小响应夹具，不发起在线请求。
+
+目录当前有10个正式候选，其中3个已成功在线核验并进入`productionTopicPacks`，其余7个只在开发静态题库中可见，不能进入生产轮换。另有2个旧开发题，不属于正式候选。
 
 手动在线核验使用：
 
 ```sh
 ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run verify:zhihu
+ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run verify:zhihu -- --all
+ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run verify:zhihu -- --candidates
+ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run zhihu:hot
 ```
 
-脚本只输出packId、问题ID、选中回答URL、赞同数、片段长度和核验时间，不输出凭据或完整回答。
+`--all`验证已进入生产的题；`--candidates`验证全部待审核候选。脚本只输出状态、packId、问题ID、选中回答URL、赞同数、片段长度和核验时间，不输出凭据或完整回答。热榜工具只输出问题元数据和截断摘要。
+
+HTTP客户端将请求串行化，默认最短间隔1秒，可用`ZHIHU_MIN_REQUEST_INTERVAL_MS`调大；业务码`30001`仍直接返回失败，不自动循环重试。当前缓存不跨进程，SQLite持久化题目缓存仍是后续工作。

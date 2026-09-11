@@ -7,6 +7,7 @@ export class CachedTopicProvider implements TopicProvider {
   private ttlMs: number;
   private now: () => number;
   private cache = new Map<string, { expiresAt: number; topic: Topic }>();
+  private inFlight = new Map<string, Promise<Topic>>();
 
   constructor(source: TopicProvider, ttlMs: number, now: () => number = Date.now) {
     if (!Number.isSafeInteger(ttlMs) || ttlMs <= 0) throw new Error("INVALID_TOPIC_CACHE_TTL");
@@ -21,8 +22,13 @@ export class CachedTopicProvider implements TopicProvider {
     const now = this.now();
     const cached = this.cache.get(candidateId);
     if (cached && cached.expiresAt > now) return structuredClone(cached.topic);
-    const topic = await this.source.resolve(candidateId, signal);
-    this.cache.set(candidateId, { expiresAt: now + this.ttlMs, topic: structuredClone(topic) });
-    return structuredClone(topic);
+    const running = this.inFlight.get(candidateId);
+    if (running) return structuredClone(await running);
+    const request = this.source.resolve(candidateId, signal).then(topic => {
+      this.cache.set(candidateId, { expiresAt: this.now() + this.ttlMs, topic: structuredClone(topic) });
+      return topic;
+    }).finally(() => this.inFlight.delete(candidateId));
+    this.inFlight.set(candidateId, request);
+    return structuredClone(await request);
   }
 }
