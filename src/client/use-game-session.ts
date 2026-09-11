@@ -16,6 +16,7 @@ const errorText: Record<string, string> = {
   INVALID_TARGET: "不能选择这个座位", COMMAND_ID_REUSED: "请求标识已被其他操作使用", COMMAND_LIMIT: "本局操作记录已满",
   NOT_JOINED: "尚未进入房间", WRONG_MATCH: "对局已经更换",
   RATE_LIMITED: "操作过于频繁，请稍后再试",
+  CONTENT_REJECTED: "内容包含不适合公开发送的信息，请修改后重试",
 };
 
 function id() { return crypto.randomUUID().replaceAll("-", "_"); }

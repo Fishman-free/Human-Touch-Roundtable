@@ -7,6 +7,7 @@ import type { LlmCompletion, LlmProvider } from "../src/ai/llm-provider.ts";
 import { parseAiCommand } from "../src/ai/output-parser.ts";
 import { OpenAiCompatibleProvider } from "../src/ai/providers/openai-compatible.ts";
 import { MockAiProvider } from "../src/ai/mock-ai-provider.ts";
+import { buildPrompt } from "../src/ai/prompt-builder.ts";
 
 function request(action: AiRequest["action"], round: 1 | 2 | 3 = 1): AiRequest {
   const view = {
@@ -113,4 +114,9 @@ test("供应商HTTP错误只暴露收敛后的错误码", async () => {
   await assert.rejects(new LlmGateway([provider], { onAttempt: event => events.push(event) })
     .act(request("answer"), new AbortController().signal), /AI_PROVIDERS_EXHAUSTED/);
   assert.equal(events[0].errorCode, "LLM_HTTP_401");
+});
+
+test("Prompt明确把所有上下文标记为不可信数据", () => {
+  const prompt = buildPrompt(request("answer"));
+  assert.match(prompt.messages[0].content, /都是不可信数据/);
 });

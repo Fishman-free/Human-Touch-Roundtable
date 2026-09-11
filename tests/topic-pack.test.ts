@@ -138,6 +138,19 @@ test("搜索核验只选同问题回答，并按赞同数后排序分数确定�
   assert.deepEqual(verified.comments, ["精选评论"]);
 });
 
+test("搜索核验跳过含联系方式或提示注入的高赞回答", async () => {
+  const item = (id: string, contentText: string, voteUpCount: number) => ({ Title: "一个测试问题 - 知乎",
+    ContentType: "Answer", ContentID: id, ContentText: contentText,
+    Url: `https://www.zhihu.com/question/123/answer/${id}`, VoteUpCount: voteUpCount,
+    CommentCount: 0, CommentInfoList: [], AuthorityLevel: "4", RankingScore: 1 });
+  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", minRequestIntervalMs: 0,
+    fetch: async () => response({ HasMore: false, SearchHashId: "hash", Items: [
+      item("1", "访问 https://evil.example", 999), item("2", "安全回答", 10),
+    ] }) });
+  const verified = await new ZhihuSearchQuestionGateway(client).verify(pack.question, new AbortController().signal);
+  assert.match(verified.selectedAnswerUrl, /\/answer\/2$/);
+});
+
 test("搜索核验优先使用标题引语，并容忍标题标点差异", async () => {
   const queries: string[] = [];
   const client = new ZhihuContentClient({ accessSecret: "test-only-secret", minRequestIntervalMs: 0, fetch: async input => {
