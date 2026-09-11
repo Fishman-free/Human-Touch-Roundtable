@@ -57,6 +57,7 @@ npm run smoke:prod
 - [可观测性与备份](docs/operations/observability.md)：脱敏日志、指标、健康检查和SQLite备份。
 - [崩溃与恢复](docs/operations/recovery.md)：跨进程WAL、连续截止和备份恢复演练。
 - [生产部署](docs/operations/deployment.md)：Docker、Caddy、持久卷、发布与人工验收。
+- [预演负载](docs/operations/load-testing.md)：并发WebSocket、可信代理IP和延迟冒烟。
 - `src/game/model.ts`：服务端权威类型、动作与结果。
 - `src/game/transition.ts`：不可变状态转换和超时补全。
 - `src/game/settlement.ts`：普通人有效票与三方胜负。

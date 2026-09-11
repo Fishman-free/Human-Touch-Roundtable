@@ -37,6 +37,7 @@ npm run audit:repo
 npm run check
 npm run build
 npm run smoke:prod
+npm run load:smoke
 ```
 
 生产冒烟会启动真正的`NODE_ENV=production`服务器，检查首页、健康、指标认证、允许Origin的Socket入场及拒绝恶意Origin；它显式启用“仅测试可用”的静态题目开关，并使用占位模型凭据但不触发开局或模型调用。该结果只验证基础设施。
@@ -62,3 +63,5 @@ npm run smoke:prod
 完成这些人工项前，容器可部署不等于公网生产验收完成。
 
 GitHub `main`的Verify工作流执行生产构建、生产进程冒烟、`docker build`和`docker compose config`；具体结果以仓库Actions页面为准。真实域名环境仍需单独验收。
+
+应用层并发和可信代理冒烟见[负载测试](load-testing.md)。
