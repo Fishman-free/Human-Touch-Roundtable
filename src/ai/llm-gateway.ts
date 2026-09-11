@@ -37,18 +37,22 @@ function complete(provider: LlmProvider, request: ReturnType<typeof buildPrompt>
 export class LlmGateway implements AiProvider {
   private providers: readonly LlmProvider[];
   private attemptTimeoutMs: number;
+  private maxTokens: number;
   private onAttempt?: (event: AiAttemptEvent) => void;
 
-  constructor(providers: readonly LlmProvider[], options: { attemptTimeoutMs?: number; onAttempt?: (event: AiAttemptEvent) => void } = {}) {
+  constructor(providers: readonly LlmProvider[], options: { attemptTimeoutMs?: number; maxTokens?: number;
+    onAttempt?: (event: AiAttemptEvent) => void } = {}) {
     if (!providers.length || new Set(providers.map(provider => provider.id)).size !== providers.length) throw new Error("INVALID_LLM_PROVIDERS");
     this.providers = providers;
     this.attemptTimeoutMs = options.attemptTimeoutMs ?? 8_000;
-    if (!Number.isSafeInteger(this.attemptTimeoutMs) || this.attemptTimeoutMs <= 0) throw new Error("INVALID_LLM_TIMEOUT");
+    this.maxTokens = options.maxTokens ?? 1_024;
+    if (!Number.isSafeInteger(this.attemptTimeoutMs) || this.attemptTimeoutMs <= 0 ||
+      !Number.isSafeInteger(this.maxTokens) || this.maxTokens < 64 || this.maxTokens > 4_096) throw new Error("INVALID_LLM_OPTIONS");
     this.onAttempt = options.onAttempt;
   }
 
   async act(request: AiRequest, signal: AbortSignal): Promise<AiCommand> {
-    const prompt = buildPrompt(request);
+    const prompt = buildPrompt(request, this.maxTokens);
     for (const provider of this.providers) {
       const startedAt = Date.now();
       const attempt = attemptSignal(signal, Math.min(this.attemptTimeoutMs, Math.max(1, request.deadlineAt - Date.now())));
@@ -63,7 +67,7 @@ export class LlmGateway implements AiProvider {
         const status: AiAttemptEvent["status"] = signal.aborted ? "aborted" : attempt.timedOut() ? "timeout" :
           error instanceof Error && /AI_(?:JSON|OUTPUT|TARGET)|UNSAFE/.test(error.message) ? "invalid-output" : "provider-error";
         const message = error instanceof Error ? error.message : "";
-        const errorCode = /^(?:LLM_HTTP_\d{3}|LLM_RESPONSE_TOO_LARGE|INVALID_LLM_RESPONSE|INVALID_AI_[A-Z_]+|UNSAFE_AI_OUTPUT)$/.test(message)
+        const errorCode = /^(?:LLM_HTTP_\d{3}|LLM_RESPONSE_TOO_LARGE|INVALID_LLM_RESPONSE|INVALID_AI_[A-Z_]+|AI_OUTPUT_TOO_LONG|UNSAFE_AI_OUTPUT)$/.test(message)
           ? message : undefined;
         this.report({ provider: provider.id, model: provider.model, action: request.action,
           promptVersion: PROMPT_VERSION, status, latencyMs: Date.now() - startedAt, errorCode });

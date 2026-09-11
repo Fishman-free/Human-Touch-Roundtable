@@ -76,27 +76,33 @@ test("结构化解析覆盖第二轮、指认、回应、追问跳过和投票",
   assert.deepEqual(parseAiCommand('{"targetSeatId":"s1"}', request("vote")), { type: "vote", targetSeatId: "s1" });
   assert.throws(() => parseAiCommand('{"targetSeatId":"s3"}', request("vote")), /INVALID_AI_TARGET/);
   assert.throws(() => parseAiCommand('```json\n{}\n```', request("vote")), /INVALID_AI_JSON/);
+  assert.throws(() => parseAiCommand(JSON.stringify({ text: "字".repeat(31) }), request("answer")), /AI_OUTPUT_TOO_LONG/);
 });
 
 test("OpenAI兼容客户端发送JSON模式并限制响应结构", async () => {
   let authorization = "";
+  let requestBody: Record<string, unknown> = {};
   const mockedFetch: typeof fetch = async (_input, init) => {
     authorization = new Headers(init?.headers).get("authorization") ?? "";
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
     return new Response(JSON.stringify({ choices: [{ message: { content: '{"text":"回答"}' } }],
       usage: { prompt_tokens: 8, completion_tokens: 2 } }), { status: 200, headers: { "content-type": "application/json" } });
   };
   const provider = new OpenAiCompatibleProvider({ id: "provider", endpoint: "https://api.example.com/v1/chat/completions",
-    apiKey: "test-secret-not-real", model: "model", fetch: mockedFetch });
+    apiKey: "test-secret-not-real", model: "model", fetch: mockedFetch,
+    extraBody: { thinking: { type: "disabled" } } });
   const completion = await provider.complete({ messages: [{ role: "user", content: "test" }], temperature: 0.5, maxTokens: 20 },
     new AbortController().signal);
   assert.equal(authorization, "Bearer test-secret-not-real");
   assert.deepEqual(completion, { content: '{"text":"回答"}', inputTokens: 8, outputTokens: 2 });
+  assert.deepEqual(requestBody.thinking, { type: "disabled" });
 });
 
 test("环境组装开发默认Mock，生产禁止Mock且live必须有供应商", () => {
   assert.ok(createAiProvider({}, true) instanceof MockAiProvider);
   assert.throws(() => createAiProvider({ AI_MODE: "mock" }, false), /MOCK_AI_NOT_ALLOWED_IN_PRODUCTION/);
   assert.throws(() => createAiProvider({ AI_MODE: "live" }, true), /INVALID_LLM_PROVIDERS/);
+  assert.throws(() => new LlmGateway([new StubProvider("only", "{}")], { maxTokens: 10 }), /INVALID_LLM_OPTIONS/);
   assert.throws(() => createAiProvider({ AI_MODE: "live", GLM_API_KEY: "key", GLM_ENDPOINT: "http://localhost" }, true),
     /INVALID_LLM_PROVIDER_CONFIG/);
 });

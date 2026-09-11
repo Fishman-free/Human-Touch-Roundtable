@@ -12,6 +12,8 @@
     "smoke:prod": "tsx scripts/smoke-production.ts",
     "verify:zhihu": "node scripts/verify-zhihu-provider.ts",
     "verify:llm": "node scripts/verify-llm-provider.ts",
+    "verify:llm-models": "node scripts/list-llm-models.ts",
+    "inspect:llm-shape": "node scripts/inspect-llm-response-shape.ts",
     "verify:llm": "node scripts/verify-llm-provider.ts",
     "zhihu:hot": "node scripts/list-zhihu-hot.ts",
     "test": "node --test tests/*.test.ts",

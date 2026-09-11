@@ -19,7 +19,9 @@ export function createAiProvider(environment: Readonly<Record<string, string | u
   if (environment.GLM_API_KEY) providers.push(new OpenAiCompatibleProvider({
     id: "glm", endpoint: environment.GLM_ENDPOINT ?? "https://open.bigmodel.cn/api/paas/v4/chat/completions", apiKey: environment.GLM_API_KEY,
     model: environment.GLM_MODEL ?? "glm-4-flash",
+    ...(environment.GLM_THINKING ? { extraBody: { thinking: { type: environment.GLM_THINKING } } } : {}),
   }));
-  const timeout = Number(environment.AI_ATTEMPT_TIMEOUT_MS ?? 8_000);
-  return new LlmGateway(providers, { attemptTimeoutMs: timeout, onAttempt });
+  const timeout = Number(environment.AI_ATTEMPT_TIMEOUT_MS ?? 14_000);
+  const maxTokens = Number(environment.AI_MAX_TOKENS ?? 1_024);
+  return new LlmGateway(providers, { attemptTimeoutMs: timeout, maxTokens, onAttempt });
 }

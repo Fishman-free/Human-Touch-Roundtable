@@ -1,5 +1,6 @@
 import type { AiRequest } from "../application/ports.ts";
 import type { LlmRequest } from "./llm-provider.ts";
+import { ANSWER_LIMIT } from "../contracts/rules.ts";
 
 const personas = [
   "表达直接，偶尔省略主语，不做面面俱到的总结。",
@@ -10,7 +11,7 @@ const personas = [
 
 export const PROMPT_VERSION = "roundtable-ai-v1";
 
-export function buildPrompt(request: AiRequest): LlmRequest {
+export function buildPrompt(request: AiRequest, maxTokens = 1_024): LlmRequest {
   const persona = personas[(Number(request.seatId.slice(1)) - 1) % personas.length];
   const system = [
     `你是匿名圆桌中的${request.seatId}，正在参与人机辨认游戏。`,
@@ -27,8 +28,11 @@ export function buildPrompt(request: AiRequest): LlmRequest {
     privateRoles: request.context.roles,
     goal: request.context.goal,
   };
+  const answerInstruction = request.context.view.round === 2
+    ? `输出{\"stance\":\"pro或con\",\"text\":\"理由\"}；text最多${ANSWER_LIMIT[2] - 3}字，立场前缀计入总长。`
+    : `输出{\"text\":\"...\"}；text最多${ANSWER_LIMIT[request.context.view.round === 3 ? 3 : 1]}字。`;
   const instruction = {
-    answer: "按当前轮次回答。第一/三轮输出{\"text\":\"...\"}；第二轮输出{\"stance\":\"pro或con\",\"text\":\"理由\"}。",
+    answer: `${answerInstruction}只给一句，输出前检查字数。`,
     accuse: "选择非自己的座位，输出{\"targetSeatId\":\"sN\",\"text\":\"指认理由\"}。",
     respond: "回应当前指认，输出{\"text\":\"回应\"}。",
     followup: "追问一次时输出{\"text\":\"问题\"}；不追问输出{\"skip\":true}。",
@@ -36,5 +40,5 @@ export function buildPrompt(request: AiRequest): LlmRequest {
   }[request.action];
   return { messages: [{ role: "system", content: system },
     { role: "user", content: `${instruction}\n上下文JSON：${JSON.stringify(context)}` }],
-    temperature: request.action === "vote" ? 0.3 : 0.85, maxTokens: 220 };
+    temperature: request.action === "vote" ? 0.3 : 0.85, maxTokens };
 }
