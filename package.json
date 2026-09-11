@@ -8,6 +8,7 @@
     "dev": "tsx watch server.ts",
     "build": "next build",
     "backup": "node scripts/backup.ts",
+    "drill:recovery": "node --test tests/recovery-process.test.ts",
     "start": "NODE_ENV=production node server.ts",
     "smoke:prod": "tsx scripts/smoke-production.ts",
     "verify:zhihu": "node scripts/verify-zhihu-provider.ts",

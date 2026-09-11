@@ -147,6 +147,11 @@ export class SqlitePersistence implements RoomStore, SessionStore {
     return row.ok === 1;
   }
 
+  integrityCheck(): boolean {
+    const rows = this.db.prepare("PRAGMA integrity_check").all() as Row[];
+    return rows.length === 1 && rows[0].integrity_check === "ok";
+  }
+
   async backup(path: string): Promise<void> {
     if (!path || path === this.db.location()) throw new Error("INVALID_BACKUP_PATH");
     await backup(this.db, path);
