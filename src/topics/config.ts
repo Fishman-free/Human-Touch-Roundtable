@@ -1,6 +1,6 @@
 import type { TopicProvider } from "../application/ports.ts";
 import { StaticTopicProvider } from "./static-topic-provider.ts";
-import { curatedTopicPacks } from "./static-topic-provider.ts";
+import { productionTopicPacks } from "./static-topic-provider.ts";
 import { CachedTopicProvider } from "./cached-topic-provider.ts";
 import { VerifiedTopicProvider } from "./verified-topic-provider.ts";
 import { ZhihuContentClient } from "./zhihu-content-client.ts";
@@ -18,8 +18,9 @@ export function createTopicProvider(environment: Readonly<Record<string, string 
   if (mode === "verified") {
     const secret = environment.ZHIHU_ACCESS_SECRET;
     if (!secret) throw new Error("ZHIHU_ACCESS_SECRET_REQUIRED");
-    const provider = new VerifiedTopicProvider(curatedTopicPacks,
-      new ZhihuSearchQuestionGateway(new ZhihuContentClient({ accessSecret: secret })));
+    const interval = Number(environment.ZHIHU_MIN_REQUEST_INTERVAL_MS ?? 1_000);
+    const provider = new VerifiedTopicProvider(productionTopicPacks,
+      new ZhihuSearchQuestionGateway(new ZhihuContentClient({ accessSecret: secret, minRequestIntervalMs: interval })));
     const ttl = Number(environment.ZHIHU_TOPIC_CACHE_MS ?? 6 * 60 * 60 * 1_000);
     return new CachedTopicProvider(provider, ttl);
   }

@@ -4,7 +4,7 @@ import { normalizeTopicPack, parseTopicPack } from "../src/topics/topic-pack.ts"
 import { VerifiedTopicProvider } from "../src/topics/verified-topic-provider.ts";
 import { CachedTopicProvider } from "../src/topics/cached-topic-provider.ts";
 import { createTopicProvider } from "../src/topics/config.ts";
-import { StaticTopicProvider } from "../src/topics/static-topic-provider.ts";
+import { candidateTopicPacks, productionTopicPacks, StaticTopicProvider } from "../src/topics/static-topic-provider.ts";
 import { ZhihuContentClient, questionIdFromUrl } from "../src/topics/zhihu-content-client.ts";
 import { ZhihuSearchQuestionGateway } from "../src/topics/zhihu-search-gateway.ts";
 
@@ -77,6 +77,9 @@ test("题目缓存按候选隔离、返回副本并在TTL后重新核验", async
 });
 
 test("题目环境组装开发默认静态，生产默认要求真实核验网关", () => {
+  assert.equal(candidateTopicPacks.length, 10);
+  assert.equal(productionTopicPacks.length, 3);
+  assert.ok(productionTopicPacks.every(pack => candidateTopicPacks.includes(pack)));
   assert.ok(createTopicProvider({}, true) instanceof StaticTopicProvider);
   assert.throws(() => createTopicProvider({}, false), /ZHIHU_ACCESS_SECRET_REQUIRED/);
   assert.throws(() => createTopicProvider({ TOPIC_MODE: "static" }, false), /STATIC_TOPICS_NOT_ALLOWED_IN_PRODUCTION/);
@@ -94,7 +97,7 @@ function response(data: unknown) {
 
 test("知乎HTTP客户端使用官方字段解析热榜和搜索，并兼容缺失精选评论", async () => {
   const calls: URL[] = [];
-  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", fetch: async input => {
+  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", minRequestIntervalMs: 0, fetch: async input => {
     const url = new URL(String(input)); calls.push(url);
     if (url.pathname.endsWith("hot_list")) return response({ Total: 1, Items: [
       { Title: "问题", Url: "https://www.zhihu.com/question/123", Summary: "摘要", ThumbnailUrl: "" },
@@ -114,7 +117,7 @@ test("知乎HTTP客户端使用官方字段解析热榜和搜索，并兼容缺�
 });
 
 test("搜索核验只选同问题回答，并按赞同数后排序分数确定片段", async () => {
-  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", fetch: async () => response({
+  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", minRequestIntervalMs: 0, fetch: async () => response({
     HasMore: false, SearchHashId: "hash", Items: [
       { Title: "一个测试问题 - 知乎", ContentType: "Answer", ContentID: "1", ContentText: "低赞回答",
         Url: "https://www.zhihu.com/question/123/answer/1", VoteUpCount: 10, CommentCount: 0,
@@ -137,7 +140,7 @@ test("搜索核验只选同问题回答，并按赞同数后排序分数确定�
 
 test("搜索核验优先使用标题引语，并容忍标题标点差异", async () => {
   const queries: string[] = [];
-  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", fetch: async input => {
+  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", minRequestIntervalMs: 0, fetch: async input => {
     const query = new URL(String(input)).searchParams.get("Query")!; queries.push(query);
     return response({ HasMore: false, SearchHashId: "hash", Items: [{
       Title: "为什么教程都用“两勺生抽一勺老抽”? - 知乎", ContentType: "Answer", ContentID: "1",
@@ -155,4 +158,21 @@ test("知乎URL关联只接受官方问题及回答路径", () => {
   assert.equal(questionIdFromUrl("https://www.zhihu.com/question/123"), "123");
   assert.equal(questionIdFromUrl("https://evil.example/question/123/answer/9"), null);
   assert.equal(questionIdFromUrl("not-a-url"), null);
+});
+
+test("题目缓存合并同候选并发请求并返回独立副本", async () => {
+  let calls = 0;
+  let release!: (topic: ReturnType<typeof normalizeTopicPack>) => void;
+  const source = { candidateIds: ["test-topic"], resolve: () => {
+    calls++;
+    return new Promise<ReturnType<typeof normalizeTopicPack>>(resolve => { release = resolve; });
+  } };
+  const cached = new CachedTopicProvider(source, 100);
+  const first = cached.resolve("test-topic", new AbortController().signal);
+  const second = cached.resolve("test-topic", new AbortController().signal);
+  release(normalizeTopicPack(parseTopicPack(pack)));
+  const [left, right] = await Promise.all([first, second]);
+  assert.equal(calls, 1);
+  left.title = "changed";
+  assert.equal(right.title, pack.question.title);
 });
