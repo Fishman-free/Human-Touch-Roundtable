@@ -12,6 +12,7 @@ export interface AiAttemptEvent {
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
+  errorCode?: string;
 }
 
 function attemptSignal(outer: AbortSignal, timeoutMs: number) {
@@ -61,8 +62,11 @@ export class LlmGateway implements AiProvider {
       } catch (error) {
         const status: AiAttemptEvent["status"] = signal.aborted ? "aborted" : attempt.timedOut() ? "timeout" :
           error instanceof Error && /AI_(?:JSON|OUTPUT|TARGET)|UNSAFE/.test(error.message) ? "invalid-output" : "provider-error";
+        const message = error instanceof Error ? error.message : "";
+        const errorCode = /^(?:LLM_HTTP_\d{3}|LLM_RESPONSE_TOO_LARGE|INVALID_LLM_RESPONSE|INVALID_AI_[A-Z_]+|UNSAFE_AI_OUTPUT)$/.test(message)
+          ? message : undefined;
         this.report({ provider: provider.id, model: provider.model, action: request.action,
-          promptVersion: PROMPT_VERSION, status, latencyMs: Date.now() - startedAt });
+          promptVersion: PROMPT_VERSION, status, latencyMs: Date.now() - startedAt, errorCode });
         if (signal.aborted) throw new Error("AI_ABORTED");
       } finally { attempt.close(); }
     }
