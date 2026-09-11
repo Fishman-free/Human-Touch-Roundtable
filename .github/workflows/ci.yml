@@ -21,6 +21,7 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: '1'
       - run: npm run smoke:prod
+      - run: npm run load:smoke
       - run: docker build -t human-touch-roundtable:ci .
       - run: docker compose config --quiet
         env:
