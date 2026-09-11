@@ -55,6 +55,7 @@ npm run smoke:prod
 - [内容安全](docs/architecture/content-safety.md)：文本规范化、隐私/注入过滤及未覆盖范围。
 - [命令确认与重试](docs/architecture/command-retry.md)：浏览器Outbox、幂等重发与状态未知处理。
 - [可观测性与备份](docs/operations/observability.md)：脱敏日志、指标、健康检查和SQLite备份。
+- [崩溃与恢复](docs/operations/recovery.md)：跨进程WAL、连续截止和备份恢复演练。
 - [生产部署](docs/operations/deployment.md)：Docker、Caddy、持久卷、发布与人工验收。
 - `src/game/model.ts`：服务端权威类型、动作与结果。
 - `src/game/transition.ts`：不可变状态转换和超时补全。
