@@ -44,6 +44,8 @@ RoomRuntime → AiProvider
 
 解析器可靠拒绝Markdown围栏、额外字段、超长文本和自投/未知座位；另以少量关键词和正则启发式拦截系统提示、身份表及部分普通人/影子身份泄露。启发式过滤不能构成内容安全保证，解析成功后仍需核心状态机校验，并需用真实模型做对抗测试。
 
+真人、题目和AI共用的确定性基础策略见[内容安全边界](content-safety.md)。
+
 ## 故障切换
 
 每个供应商独立超时；网关使用自身Promise竞速，因此供应商即使忽略AbortSignal也不会阻止切换。失败类型只记录provider、model、action、promptVersion、状态、延迟和可选Token数，不记录Prompt、响应、用户文本或异常详情。

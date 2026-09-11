@@ -2,6 +2,7 @@ import type { Actor, Command, CommandEnvelope, ErrorCode, GameLogEntry, GameStat
 import { ANSWER_LIMIT, ANSWER_MS, charCount, DEBATE_MS, DEBATE_STEP_MS, MAX_DEBATE_BYTES, roleCounts, VOTE_MS } from "./rules.ts";
 import { settle } from "./settlement.ts";
 import { PLAYER_LIMITS } from "../contracts/rules.ts";
+import { checkHumanContent } from "../safety/content-policy.ts";
 
 class RuleError extends Error {
   code: ErrorCode;
@@ -109,6 +110,12 @@ function text(value: unknown, limit?: number): string {
   if (limit !== undefined) requireRule(charCount(clean) <= limit, "INVALID_INPUT");
   return clean;
 }
+function playerText(value: unknown, limit?: number): string {
+  requireRule(typeof value === "string", "INVALID_INPUT");
+  const decision = checkHumanContent(value);
+  requireRule(decision.ok, "CONTENT_REJECTED");
+  return text(decision.text, limit);
+}
 function validateTopic(topic: Topic) {
   requireRule(topic && typeof topic === "object", "INVALID_INPUT");
   for (const value of [topic.id, topic.title, topic.topAnswerExcerpt, topic.topConsensusSummary]) text(value);
@@ -191,7 +198,7 @@ function apply(state: GameState, actor: Actor, command: Command, now: number) {
   if (command.type === "answer") {
     requireRule(state.phase === "answering" && command.round === state.round, "WRONG_PHASE");
     requireRule(!state.answers[state.round!].some(answer => answer.seatId === seat.seatId), "DUPLICATE");
-    let answer = text(command.text);
+    let answer = playerText(command.text);
     if (state.round === 2) {
       requireRule(command.stance === "pro" || command.stance === "con", "INVALID_INPUT");
       answer = `${command.stance === "pro" ? "正方" : "反方"}：${answer}`;
@@ -218,16 +225,16 @@ function apply(state: GameState, actor: Actor, command: Command, now: number) {
     target(state, accuser, command.targetSeatId);
     debate.targetSeatId = command.targetSeatId;
     log(state, { type: "accusation", seatId: accuser, targetSeatId: command.targetSeatId,
-      text: text(command.text), turnIndex: debate.turnIndex, at: now });
+      text: playerText(command.text), turnIndex: debate.turnIndex, at: now });
   } else if (command.type === "respond") {
     requireRule(debate.step === "response", "WRONG_PHASE");
     requireRule(seat.seatId === debate.targetSeatId, "FORBIDDEN");
-    log(state, { type: "response", seatId: seat.seatId, text: text(command.text), turnIndex: debate.turnIndex, at: now });
+    log(state, { type: "response", seatId: seat.seatId, text: playerText(command.text), turnIndex: debate.turnIndex, at: now });
   } else if (command.type === "followup" || command.type === "skip-followup") {
     requireRule(debate.step === "followup", "WRONG_PHASE");
     requireRule(seat.seatId === accuser, "FORBIDDEN");
     log(state, { type: command.type, seatId: accuser,
-      ...(command.type === "followup" ? { text: text(command.text) } : {}), turnIndex: debate.turnIndex, at: now });
+      ...(command.type === "followup" ? { text: playerText(command.text) } : {}), turnIndex: debate.turnIndex, at: now });
   } else throw new RuleError("INVALID_INPUT");
   nextDebate(state, now);
 }

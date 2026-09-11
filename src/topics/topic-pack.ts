@@ -1,5 +1,6 @@
 import { ANSWER_LIMIT, charCount } from "../contracts/rules.ts";
 import type { Round, Topic } from "../game/model.ts";
+import { checkHumanContent } from "../safety/content-policy.ts";
 
 export interface TopicPackV1 {
   schemaVersion: 1;
@@ -31,6 +32,11 @@ function date(value: unknown): string {
   if (!result.endsWith("Z") || Number.isNaN(Date.parse(result))) throw new Error("INVALID_TOPIC_PACK");
   return result;
 }
+function publicText(value: unknown, max: number): string {
+  const decision = checkHumanContent(clean(value, max));
+  if (!decision.ok) throw new Error("INVALID_TOPIC_PACK");
+  return decision.text;
+}
 
 export function parseTopicPack(input: unknown): TopicPackV1 {
   if (!object(input) || !exact(input, ["schemaVersion", "packId", "source", "curatedAt", "question", "tags", "defaults"]) ||
@@ -48,7 +54,7 @@ export function parseTopicPack(input: unknown): TopicPackV1 {
   for (const round of [1, 2, 3] as const) {
     const pool = input.defaults[String(round)];
     if (!Array.isArray(pool) || pool.length < 2 || pool.length > 16) throw new Error("INVALID_TOPIC_PACK");
-    defaults[round] = pool.map(item => clean(item, ANSWER_LIMIT[round]));
+    defaults[round] = pool.map(item => publicText(item, ANSWER_LIMIT[round]));
     if (round === 2 && (!defaults[round].some(item => /^正方：\S/.test(item)) ||
       !defaults[round].some(item => /^反方：\S/.test(item)) || !defaults[round].every(item => /^(正方|反方)：\S/.test(item)))) {
       throw new Error("INVALID_TOPIC_PACK");
@@ -58,9 +64,9 @@ export function parseTopicPack(input: unknown): TopicPackV1 {
   if (new Set(tags).size !== tags.length || tags.length > 12) throw new Error("INVALID_TOPIC_PACK");
   return {
     schemaVersion: 1, packId, source: "zhihu", curatedAt: date(input.curatedAt),
-    question: { id, title: clean(input.question.title, 120), url,
-      topAnswerExcerpt: clean(input.question.topAnswerExcerpt, 200),
-      topConsensusSummary: clean(input.question.topConsensusSummary, 120) },
+    question: { id, title: publicText(input.question.title, 120), url,
+      topAnswerExcerpt: publicText(input.question.topAnswerExcerpt, 200),
+      topConsensusSummary: publicText(input.question.topConsensusSummary, 120) },
     tags, defaults,
   };
 }

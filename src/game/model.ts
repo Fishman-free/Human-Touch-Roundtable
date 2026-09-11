@@ -109,7 +109,7 @@ export interface CommandEnvelope {
 }
 
 export type ErrorCode = "INVALID_INPUT" | "WRONG_MATCH" | "STALE_PHASE" | "WRONG_PHASE" |
-  "FORBIDDEN" | "DUPLICATE" | "INVALID_TARGET" | "ROOM_FULL";
+  "FORBIDDEN" | "DUPLICATE" | "INVALID_TARGET" | "ROOM_FULL" | "CONTENT_REJECTED";
 
 export type TransitionResult = { state: GameState } & (
   { ok: true } | { ok: false; error: ErrorCode }

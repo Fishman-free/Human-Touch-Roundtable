@@ -1,6 +1,7 @@
 import { charCount } from "../contracts/rules.ts";
 import type { ZhihuQuestionGateway, ZhihuQuestionReference } from "./verified-topic-provider.ts";
 import { questionIdFromUrl, ZhihuContentClient } from "./zhihu-content-client.ts";
+import { checkHumanContent } from "../safety/content-policy.ts";
 
 function excerpt(value: string, max: number) {
   const clean = value.replace(/\s+/g, " ").trim();
@@ -30,8 +31,11 @@ export class ZhihuSearchQuestionGateway implements ZhihuQuestionGateway {
     }
     if (!answers.length) throw new Error("ZHIHU_QUESTION_ANSWER_NOT_FOUND");
     answers.sort((left, right) => right.voteUpCount - left.voteUpCount || right.rankingScore - left.rankingScore);
-    const selected = answers[0];
-    const topAnswerExcerpt = excerpt(selected.contentText, 200);
+    const safe = answers.map(selected => ({ selected, decision: checkHumanContent(excerpt(selected.contentText, 200)) }))
+      .find(item => item.decision.ok);
+    if (!safe || !safe.decision.ok) throw new Error("UNSAFE_ZHIHU_ANSWER");
+    const { selected } = safe;
+    const topAnswerExcerpt = safe.decision.text;
     if (!topAnswerExcerpt || charCount(topAnswerExcerpt) > 200) throw new Error("INVALID_ZHIHU_ANSWER");
     return {
       id: question.id, title: question.title, url: question.url, topAnswerExcerpt,
