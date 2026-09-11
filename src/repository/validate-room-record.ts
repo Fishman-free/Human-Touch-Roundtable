@@ -22,7 +22,9 @@ function validateTopic(value: unknown): asserts value is Topic {
   // Legacy records created before topic-pack v1 have no provenance. All newly
   // resolved topics are required to include it by the core transition.
   if (value.provenance !== undefined) requireValid(object(value.provenance) && nonempty(value.provenance.packId) &&
-    value.provenance.source === "zhihu" && nonempty(value.provenance.curatedAt));
+    value.provenance.source === "zhihu" && nonempty(value.provenance.curatedAt) &&
+    (value.provenance.selectedAnswerUrl === undefined || nonempty(value.provenance.selectedAnswerUrl)) &&
+    (value.provenance.selectedVoteUpCount === undefined || integer(value.provenance.selectedVoteUpCount)));
   for (const round of [1, 2, 3] as const) {
     const pool = value.defaults[String(round)];
     requireValid(Array.isArray(pool) && pool.length >= 2 && pool.every(nonempty));

@@ -16,6 +16,8 @@ export interface Topic {
     source: "zhihu";
     curatedAt: string;
     verifiedAt?: string;
+    selectedAnswerUrl?: string;
+    selectedVoteUpCount?: number;
   };
 }
 

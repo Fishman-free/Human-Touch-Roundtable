@@ -14,7 +14,7 @@
     "id": "123456",
     "title": "知乎问题标题",
     "url": "https://www.zhihu.com/question/123456",
-    "topAnswerExcerpt": "经许可使用的最高赞回答片段",
+    "topAnswerExcerpt": "人工审核的高赞回答备用片段；生产核验后替换",
     "topConsensusSummary": "人工审核的高赞共识摘要"
   },
   "tags": ["AI"],
@@ -33,15 +33,25 @@
 ## 提供器
 
 - `StaticTopicProvider`：开发替身，数据经过TopicPack解析，但不调用知乎，不能在产品说明中称为实时接口。
-- `VerifiedTopicProvider`：先从人工题目包取得材料，再调用`ZhihuQuestionGateway.verify`核验问题ID、标题、URL；三者完全一致才返回，并写入verifiedAt。
+- `ZhihuContentClient`：调用官方`hot_list`和`zhihu_search`，校验HTTP/业务响应并限制响应体；热榜用于发现候选，当前开局仍以人工片单顺序为准。
+- `ZhihuSearchQuestionGateway`：优先用标题中的最长引语搜索，完整标题回退；只接受标题规范化一致、回答URL问题ID精确一致的结果，并按`VoteUpCount`、`RankingScore`选取。
+- `VerifiedTopicProvider`：把核验结果绑定到人工题目包，写入verifiedAt、选中回答URL及赞同数，并用接口回答片段替换题目包备用片段。
 - `CachedTopicProvider`：可包装任意TopicProvider，按候选和TTL缓存成功结果，返回深拷贝；进程重启后缓存消失。
 
-`ZhihuQuestionGateway`只描述项目真正需要的核验能力，不假定任何未确认HTTP路径。具体网关必须使用知乎批准的开放能力；禁止抓取网页冒充官方接口。
+当前使用官方接口：`GET /api/v1/content/hot_list`与`GET /api/v1/content/zhihu_search`，均使用Bearer Access Secret和秒级`X-Request-Timestamp`。禁止抓取网页冒充官方接口。
 
-`createTopicProvider`负责环境门禁：开发默认static；生产默认verified。当前没有具体`ZhihuQuestionGateway`实现，因此生产verified会明确拒绝启动；static只有同时设置`ALLOW_STATIC_TOPICS_IN_PRODUCTION=true`才可用于基础设施冒烟，不能用于公开游戏。
+`createTopicProvider`负责环境门禁：开发默认static；生产默认verified并要求`ZHIHU_ACCESS_SECRET`。成功结果默认缓存6小时，可用`ZHIHU_TOPIC_CACHE_MS`调整。static只有同时设置`ALLOW_STATIC_TOPICS_IN_PRODUCTION=true`才可用于基础设施冒烟，不能用于公开游戏。
 
-## 为什么仍未提供真实网关
+## 排序与覆盖限制
 
-当前GitHub仓库没有Access Secret，已知开放平台文档也未确认“按问题ID取得最高赞回答及点赞排序”的端点。热榜/搜索可以作为发现或核验来源，但最高赞回答片段和共识仍应人工审核绑定到题目包。
+搜索接口单次最多返回10条、`HasMore=false`，没有按赞同数排序参数。因此本局选择的是“本次搜索结果中，同问题回答的最高赞项”，不能宣称是全站绝对最高赞。题目包的共识、默认答案和内容适宜性仍需人工审核。
 
-接入真实网关前需确认：凭据注入、可用接口及响应字段、调用额度、缓存许可、标题变化策略和原文展示授权。真实响应契约测试应使用脱敏录制夹具；带凭据在线测试不进入普通CI。
+2026-09-11已用真实Access Secret完成热榜、搜索和生产提供器单次核验；凭据未写入仓库。普通CI使用脱敏最小响应夹具，不发起在线请求。后续仍需验证长期额度、缓存许可、标题变化、内容授权和更多题目包。
+
+手动在线核验使用：
+
+```sh
+ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run verify:zhihu
+```
+
+脚本只输出packId、问题ID、选中回答URL、赞同数、片段长度和核验时间，不输出凭据或完整回答。

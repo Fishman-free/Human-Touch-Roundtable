@@ -10,6 +10,7 @@
     "backup": "node scripts/backup.ts",
     "start": "NODE_ENV=production node server.ts",
     "smoke:prod": "tsx scripts/smoke-production.ts",
+    "verify:zhihu": "node scripts/verify-zhihu-provider.ts",
     "test": "node --test tests/*.test.ts",
     "typecheck": "next typegen && node scripts/normalize-next-env.mjs && tsc --noEmit",
     "audit:repo": "node scripts/audit-repository.mjs",

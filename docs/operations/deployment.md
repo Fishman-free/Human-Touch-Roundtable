@@ -1,6 +1,6 @@
 # 单实例生产基础设施部署
 
-> Docker、Caddy、生产进程冒烟和配置校验已通过CI；真实知乎网关尚未实现，因此当前版本不满足公开游戏开局条件。不要以静态题目覆盖该门禁后对公网发布。
+> Docker、Caddy、生产进程冒烟和配置校验已通过CI；知乎搜索核验网关已单次在线验证。公开部署仍需安全注入知乎和模型凭据，并完成真实环境验收。
 
 ## 架构
 
@@ -15,10 +15,10 @@ Internet → Caddy :443 → app :3000 → SQLite persistent volume
 1. DNS将`DOMAIN`指向服务器。
 2. 生成至少32字节随机`SESSION_HMAC_KEY`。需要暴露指标时再配置至少24字节`METRICS_TOKEN`；省略后`/api/metrics`不启用。
 3. 配置DeepSeek或GLM至少一个API Key；生产禁止Mock AI。
-4. 实现并配置经批准的知乎核验网关；默认`TOPIC_MODE=verified`会在网关缺失时拒绝启动。
+4. 配置知乎开放平台`ZHIHU_ACCESS_SECRET`；默认`TOPIC_MODE=verified`会在凭据缺失时拒绝启动。
 5. 确保持久卷和备份目标受到访问控制。
 
-不要把生产环境变量写入仓库。真实知乎网关完成后，复制字段名自行建立服务器`.env`，然后运行：
+不要把生产环境变量写入仓库。按`.env.example`字段在服务器安全配置后运行：
 
 ```sh
 docker compose build
@@ -55,7 +55,7 @@ npm run smoke:prod
 
 - 真实域名、证书、云防火墙和反向代理IP解析。
 - 真实DeepSeek/GLM调用、配额和内容安全。
-- 真实知乎题目核验能力（当前公开部署阻塞项）。
+- 知乎额度、缓存、片单轮换和长期稳定性。
 - 手机与桌面多人完整时长对局。
 - 负载、断网、重启、磁盘不足和备份恢复演练。
 
