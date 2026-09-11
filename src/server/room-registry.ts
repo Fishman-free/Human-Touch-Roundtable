@@ -22,6 +22,7 @@ export class RoomRegistry {
   private cleanupHandle?: unknown;
   private cleanupJob: Promise<void> = Promise.resolve();
   private closePromise?: Promise<void>;
+  private deleting = new Set<string>();
 
   constructor(deps: RuntimeDependencies, options: Partial<RuntimeOptions> = {}, lifecycle: Partial<RoomLifecycleOptions> = {}) {
     this.deps = deps;
@@ -52,6 +53,7 @@ export class RoomRegistry {
 
   async create(roomId: string): Promise<RoomRuntime | null> {
     if (this.closing) throw new Error("ROOM_REGISTRY_CLOSED");
+    if (this.deleting.has(roomId)) return null;
     if (this.runtimes.has(roomId) || await this.deps.store.load(roomId)) return null;
     if (this.runtimes.has(roomId)) return null;
     const promise = RoomRuntime.open(roomId, randomUUID(), this.deps, this.options);
@@ -62,6 +64,7 @@ export class RoomRegistry {
 
   async get(roomId: string): Promise<RoomRuntime | null> {
     if (this.closing) throw new Error("ROOM_REGISTRY_CLOSED");
+    if (this.deleting.has(roomId)) return null;
     const active = this.runtimes.get(roomId);
     if (active) return active;
     const record = await this.deps.store.load(roomId);
@@ -102,6 +105,22 @@ export class RoomRegistry {
         this.deps.diagnose?.({ roomId: room.roomId, kind: "room-cleanup-failed" });
       }
     }
+  }
+
+  list() { return this.deps.store.list(); }
+
+  async delete(roomId: string): Promise<boolean> {
+    if (this.closing || this.deleting.has(roomId)) return false;
+    this.deleting.add(roomId);
+    try {
+      const active = this.runtimes.get(roomId);
+      if (active) {
+        await (await active).close();
+        this.runtimes.delete(roomId);
+      }
+      const record = await this.deps.store.load(roomId);
+      return record ? this.deps.store.delete(roomId, record.version) : false;
+    } finally { this.deleting.delete(roomId); }
   }
 
   private scheduleCleanup() {

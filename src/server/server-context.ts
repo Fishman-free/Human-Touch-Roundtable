@@ -73,6 +73,13 @@ export function createServerContext(config: ServerContextConfig, providers: {
       if (closed || !initialized) return Promise.reject(new Error("SERVER_CONTEXT_NOT_READY"));
       return persistence.backup(path);
     },
+    listRooms: () => rooms.list(),
+    deleteRoom: (roomId: string) => rooms.delete(roomId),
+    revokeSession: (sessionId: string) => sessions.revoke(sessionId),
+    async cleanup() {
+      await rooms.cleanupExpired();
+      return { sessionsDeleted: await sessions.cleanupExpired() };
+    },
     async close() {
       if (closed) return;
       closed = true;

@@ -58,6 +58,8 @@ npm run smoke:prod
 - [崩溃与恢复](docs/operations/recovery.md)：跨进程WAL、连续截止和备份恢复演练。
 - [生产部署](docs/operations/deployment.md)：Docker、Caddy、持久卷、发布与人工验收。
 - [预演负载](docs/operations/load-testing.md)：并发WebSocket、可信代理IP和延迟冒烟。
+- [管理员API](docs/operations/admin-api.md)：房间摘要、删除、会话撤销和清理。
+- [隐私工程基线](docs/product/privacy.md)：数据保存、模型传输、保留和删除。
 - `src/game/model.ts`：服务端权威类型、动作与结果。
 - `src/game/transition.ts`：不可变状态转换和超时补全。
 - `src/game/settlement.ts`：普通人有效票与三方胜负。
