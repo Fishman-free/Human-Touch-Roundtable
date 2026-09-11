@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import type { RoomView, ClientToServerEvents, ServerToClientEvents, SocketCommandAck } from "../contracts/public.ts";
 import type { GameSession } from "./game-session.ts";
+import { CommandOutbox, type CommandSubmission, type OutboxTransport } from "./command-outbox.ts";
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 export type JoinMode = "player" | "spectator";
 const storageKey = "roundtable-session-v1";
+const outboxKey = "roundtable-command-outbox-v1";
 const errorText: Record<string, string> = {
   INVALID_INPUT: "输入格式不正确", ROOM_NOT_FOUND: "房间不存在", ROOM_EXISTS: "房间号已被使用",
   ROOM_UNAVAILABLE: "房间暂时不可用", INVALID_SESSION: "会话已失效", STORAGE_UNAVAILABLE: "保存失败，请重试",
@@ -23,6 +25,7 @@ function id() { return crypto.randomUUID().replaceAll("-", "_"); }
 
 export function useGameSession(): GameSession {
   const socketRef = useRef<GameSocket | null>(null);
+  const outboxRef = useRef<CommandOutbox | null>(null);
   const [connected, setConnected] = useState(false);
   const [view, setView] = useState<RoomView>();
   const [roomId, setRoomId] = useState("roundtable");
@@ -33,30 +36,46 @@ export function useGameSession(): GameSession {
   useEffect(() => {
     const socket: GameSocket = io();
     socketRef.current = socket;
+    const transport: OutboxTransport = (submission, acknowledge) => {
+      const emit = socket.emit.bind(socket) as (event: string, input: unknown,
+        callback: (ack: SocketCommandAck) => void) => void;
+      emit(submission.event, submission.input, acknowledge);
+    };
+    const outbox = new CommandOutbox({
+      storage: { get: () => sessionStorage.getItem(outboxKey), set: value => sessionStorage.setItem(outboxKey, value),
+        remove: () => sessionStorage.removeItem(outboxKey) },
+      onAck: result => { setBusy(false); setError(result.ok ? "" : errorText[result.error] ?? result.error); },
+      onUncertain: () => { setBusy(false); setError("操作确认超时；重连或刷新后会继续确认，请勿重复提交"); },
+    });
+    outboxRef.current = outbox;
+    setBusy(outbox.hasPending());
     socket.on("connect", () => {
       setConnected(true);
       const stored = sessionStorage.getItem(storageKey);
-      if (!stored) return;
+      if (!stored) { outbox.clear(); setBusy(false); return; }
       try {
         const session = JSON.parse(stored) as { roomId: string; sessionToken: string };
         socket.emit("room:resume", session, result => {
-          if (result.ok) { setRoomId(result.roomId); setView(result.view); }
-          else { sessionStorage.removeItem(storageKey); setView(undefined); setError(errorText[result.error] ?? result.error); }
+          if (result.ok) { setRoomId(result.roomId); setView(result.view); outbox.resume(transport); }
+          else { sessionStorage.removeItem(storageKey); outbox.clear(); setView(undefined); setBusy(false);
+            setError(errorText[result.error] ?? result.error); }
         });
-      } catch { sessionStorage.removeItem(storageKey); }
+      } catch { sessionStorage.removeItem(storageKey); outbox.clear(); setBusy(false); }
     });
-    socket.on("disconnect", () => { setConnected(false); setBusy(false); });
+    socket.on("disconnect", () => { setConnected(false); outbox.pause(); setBusy(outbox.hasPending()); });
     socket.on("room:state", setView);
     socket.on("session:replaced", () => {
       sessionStorage.removeItem(storageKey);
+      outbox.clear();
       setError("此会话已在另一个页面接管");
       setView(undefined);
     });
     socket.on("session:expired", () => {
       sessionStorage.removeItem(storageKey);
+      outbox.clear();
       setBusy(false); setView(undefined); setError("会话已过期，请重新进入房间");
     });
-    return () => { socket.disconnect(); socketRef.current = null; };
+    return () => { outbox.pause(); socket.disconnect(); socketRef.current = null; outboxRef.current = null; };
   }, []);
 
   function enter(event: "room:create" | "room:join") {
@@ -75,30 +94,40 @@ export function useGameSession(): GameSession {
   }
   function leave() {
     sessionStorage.removeItem(storageKey);
+    outboxRef.current?.clear();
     socketRef.current?.disconnect(); socketRef.current?.connect();
     setView(undefined); setError("");
   }
-  function ack(result: SocketCommandAck) {
-    setBusy(false);
-    setError(result.ok ? "" : errorText[result.error] ?? result.error);
-  }
   function base() { return { commandId: id(), matchId: view!.matchId, phaseToken: view!.phaseToken }; }
-  function emit(action: () => void) {
+  function transport(): OutboxTransport {
+    return (submission, acknowledge) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) return;
+      const emit = socket.emit.bind(socket) as (event: string, input: unknown,
+        callback: (ack: SocketCommandAck) => void) => void;
+      emit(submission.event, submission.input, acknowledge);
+    };
+  }
+  function emit(submission: CommandSubmission) {
     if (!socketRef.current?.connected || !view || busy) return;
-    setBusy(true); setError(""); action();
+    const outbox = outboxRef.current;
+    if (!outbox || !outbox.submit(submission, transport())) {
+      setError("上一项操作仍在等待确认，请勿重复提交"); return;
+    }
+    setBusy(true); setError("");
   }
 
   return {
     connected, view, roomId, setRoomId, mode, setMode, busy, error,
     create: () => enter("room:create"), join: () => enter("room:join"), leave,
-    ready: (ready: boolean) => emit(() => socketRef.current?.emit("room:ready", { ...base(), ready }, ack)),
-    answer: (text: string, stance?: "pro" | "con") => emit(() => socketRef.current?.emit("game:answer",
-      { ...base(), round: view!.round!, text, ...(stance ? { stance } : {}) }, ack)),
-    accuse: (targetSeatId: string, text: string) => emit(() => socketRef.current?.emit("game:accuse", { ...base(), targetSeatId, text }, ack)),
-    respond: (text: string) => emit(() => socketRef.current?.emit("game:respond", { ...base(), text }, ack)),
-    followup: (text: string) => emit(() => socketRef.current?.emit("game:followup", { ...base(), text }, ack)),
-    skipFollowup: () => emit(() => socketRef.current?.emit("game:skip-followup", base(), ack)),
-    castVote: (targetSeatId: string) => emit(() => socketRef.current?.emit("game:vote", { ...base(), targetSeatId }, ack)),
+    ready: (ready: boolean) => emit({ event: "room:ready", input: { ...base(), ready } }),
+    answer: (text: string, stance?: "pro" | "con") => emit({ event: "game:answer",
+      input: { ...base(), round: view!.round!, text, ...(stance ? { stance } : {}) } }),
+    accuse: (targetSeatId: string, text: string) => emit({ event: "game:accuse", input: { ...base(), targetSeatId, text } }),
+    respond: (text: string) => emit({ event: "game:respond", input: { ...base(), text } }),
+    followup: (text: string) => emit({ event: "game:followup", input: { ...base(), text } }),
+    skipFollowup: () => emit({ event: "game:skip-followup", input: base() }),
+    castVote: (targetSeatId: string) => emit({ event: "game:vote", input: { ...base(), targetSeatId } }),
   };
 }
 

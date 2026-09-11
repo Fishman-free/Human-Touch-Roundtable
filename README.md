@@ -53,6 +53,7 @@ npm run smoke:prod
 - [题目包与知乎接入](docs/architecture/topic-provider.md)：TopicPack v1、核验网关和缓存边界。
 - [AI网关](docs/architecture/ai-gateway.md)：结构化Prompt、供应商切换、过滤和生产配置。
 - [内容安全](docs/architecture/content-safety.md)：文本规范化、隐私/注入过滤及未覆盖范围。
+- [命令确认与重试](docs/architecture/command-retry.md)：浏览器Outbox、幂等重发与状态未知处理。
 - [可观测性与备份](docs/operations/observability.md)：脱敏日志、指标、健康检查和SQLite备份。
 - [生产部署](docs/operations/deployment.md)：Docker、Caddy、持久卷、发布与人工验收。
 - `src/game/model.ts`：服务端权威类型、动作与结果。
