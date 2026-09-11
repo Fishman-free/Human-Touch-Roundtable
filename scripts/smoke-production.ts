@@ -27,6 +27,7 @@ const child = spawn(process.execPath, ["server.ts"], {
     ALLOWED_ORIGINS: origin, TRUST_PROXY_HOPS: "0", TOPIC_MODE: "static",
     ALLOW_STATIC_TOPICS_IN_PRODUCTION: "true", AI_MODE: "live",
     DEEPSEEK_API_KEY: "ci-placeholder-not-a-real-key", METRICS_TOKEN: "production-smoke-metrics-token",
+    ADMIN_TOKEN: "production-smoke-admin-token-at-least-32-bytes",
   },
 });
 let output = "";
@@ -58,6 +59,14 @@ try {
     requestId: "10000000-0000-4000-8000-000000000001", roomId: "smoke", mode: "spectator",
   }, resolveAck));
   assert.equal(admitted.ok, true);
+  assert.equal((await fetch(`${origin}/api/admin/rooms`)).status, 401);
+  const admin = await fetch(`${origin}/api/admin/rooms`, {
+    headers: { authorization: "Bearer production-smoke-admin-token-at-least-32-bytes" },
+  });
+  assert.equal(admin.status, 200);
+  const adminText = await admin.text();
+  assert.match(adminText, /"roomId":"smoke"/);
+  for (const forbidden of ["matchId", "answers", "roles", "session", "tokenHash"]) assert.ok(!adminText.includes(forbidden));
 
   const denied: Client = io(origin, { transports: ["websocket"], extraHeaders: { origin: "https://evil.example" },
     forceNew: true, reconnection: false });

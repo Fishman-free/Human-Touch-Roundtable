@@ -13,7 +13,7 @@ Internet → Caddy :443 → app :3000 → SQLite persistent volume
 ## 必要配置
 
 1. DNS将`DOMAIN`指向服务器。
-2. 生成至少32字节随机`SESSION_HMAC_KEY`。需要暴露指标时再配置至少24字节`METRICS_TOKEN`；省略后`/api/metrics`不启用。
+2. 生成至少32字节随机`SESSION_HMAC_KEY`和`ADMIN_TOKEN`。需要暴露指标时再配置至少24字节`METRICS_TOKEN`；省略后`/api/metrics`不启用。
 3. 配置DeepSeek或GLM至少一个API Key；生产禁止Mock AI。
 4. 配置知乎开放平台`ZHIHU_ACCESS_SECRET`；默认`TOPIC_MODE=verified`会在凭据缺失时拒绝启动。
 5. 确保持久卷和备份目标受到访问控制。
@@ -65,3 +65,4 @@ npm run load:smoke
 GitHub `main`的Verify工作流执行生产构建、生产进程冒烟、`docker build`和`docker compose config`；具体结果以仓库Actions页面为准。真实域名环境仍需单独验收。
 
 应用层并发和可信代理冒烟见[负载测试](load-testing.md)。
+管理员操作见[内部管理员API](admin-api.md)，数据处理见[隐私工程基线](../product/privacy.md)。

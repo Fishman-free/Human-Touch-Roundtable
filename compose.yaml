@@ -23,6 +23,7 @@ services:
       GLM_MODEL: ${GLM_MODEL:-glm-4-flash}
       GLM_THINKING: ${GLM_THINKING:-disabled}
       METRICS_TOKEN: ${METRICS_TOKEN:-}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
     volumes:
       - roundtable_data:/app/data
   caddy:

@@ -402,3 +402,20 @@ test("优雅关闭排空已进入队列的命令，并立即拒绝新命令", as
   await closing;
   assert.equal((await store.load("closing"))!.state.members.length, 1);
 });
+
+test("注册表删除活动房间时先关闭运行时并删除持久记录", async () => {
+  const clock = new FakeClock();
+  const store = new MemoryRoomStore(() => clock.now());
+  const registry = new RoomRegistry(deps(clock, store), {}, { revealedRetentionMs: 1_000, cleanupIntervalMs: 1_000 });
+  await registry.initialize();
+  const runtime = await registry.create("delete-me");
+  assert.ok(runtime);
+  assert.equal((await runtime.dispatch("p0", request(runtime, "join", { type: "join" }))).ok, true);
+  assert.equal(await registry.delete("delete-me"), true);
+  assert.equal(await store.load("delete-me"), null);
+  const rejected = await runtime.dispatch("p1", request(runtime, "late", { type: "join" }));
+  assert.equal(rejected.ok, false);
+  if (!rejected.ok) assert.equal(rejected.error, "ROOM_CLOSED");
+  assert.equal(await registry.delete("delete-me"), false);
+  await registry.close();
+});

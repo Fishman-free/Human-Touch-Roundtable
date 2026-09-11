@@ -10,6 +10,7 @@ import { createTopicProvider } from "./src/topics/config.ts";
 import { handleOperationalRequest } from "./src/server/health.ts";
 import { parseOrigins, socketTransportOptions } from "./src/server/socket-security.ts";
 import { OperationalMonitor } from "./src/observability/monitor.ts";
+import { handleAdminRequest } from "./src/server/admin.ts";
 
 const development = process.env.NODE_ENV !== "production";
 const port = Number(process.env.PORT ?? 3000);
@@ -32,9 +33,12 @@ const nextHandler = app.getRequestHandler();
 let ready = false;
 const monitor = new OperationalMonitor();
 const metricsToken = process.env.METRICS_TOKEN;
+const adminToken = process.env.ADMIN_TOKEN;
 if (metricsToken !== undefined && Buffer.byteLength(metricsToken) < 24) throw new Error("METRICS_TOKEN must contain at least 24 bytes");
+if (adminToken !== undefined && Buffer.byteLength(adminToken) < 32) throw new Error("ADMIN_TOKEN must contain at least 32 bytes");
 const http = createServer((request, response) => {
   void (async () => {
+    if (await handleAdminRequest(request, response, adminToken, context)) return;
     if (await handleOperationalRequest(request, response, {
       ready: () => ready && context.check(), metrics: () => monitor.metrics.render(), metricsToken,
     })) return;
