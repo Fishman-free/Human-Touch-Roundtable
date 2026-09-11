@@ -6,6 +6,7 @@ export interface OpenAiCompatibleConfig {
   apiKey: string;
   model: string;
   fetch?: typeof globalThis.fetch;
+  extraBody?: Record<string, unknown>;
 }
 
 export class OpenAiCompatibleProvider implements LlmProvider {
@@ -14,6 +15,7 @@ export class OpenAiCompatibleProvider implements LlmProvider {
   private endpoint: string;
   private apiKey: string;
   private fetch: typeof globalThis.fetch;
+  private extraBody: Record<string, unknown>;
 
   constructor(config: OpenAiCompatibleConfig) {
     const endpoint = new URL(config.endpoint);
@@ -24,13 +26,17 @@ export class OpenAiCompatibleProvider implements LlmProvider {
     this.endpoint = endpoint.toString();
     this.apiKey = config.apiKey;
     this.fetch = config.fetch ?? globalThis.fetch;
+    this.extraBody = structuredClone(config.extraBody ?? {});
+    if (["model", "messages", "temperature", "max_tokens", "response_format"].some(key => key in this.extraBody)) {
+      throw new Error("INVALID_LLM_PROVIDER_CONFIG");
+    }
   }
 
   async complete(request: LlmRequest, signal: AbortSignal): Promise<LlmCompletion> {
     const response = await this.fetch(this.endpoint, {
       method: "POST", signal,
       headers: { "authorization": `Bearer ${this.apiKey}`, "content-type": "application/json", "accept": "application/json" },
-      body: JSON.stringify({ model: this.model, messages: request.messages, temperature: request.temperature,
+      body: JSON.stringify({ ...this.extraBody, model: this.model, messages: request.messages, temperature: request.temperature,
         max_tokens: request.maxTokens, response_format: { type: "json_object" } }),
     });
     if (!response.ok) throw new Error(`LLM_HTTP_${response.status}`);

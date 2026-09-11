@@ -8,8 +8,9 @@ function exact(value: Value, fields: readonly string[]) {
 }
 const forbidden = [/系统提示/i, /prompt/i, /身份表/, /隐藏角色/, /(?:s\d+|\d+号席).{0,8}(?:是|身份).{0,4}(?:普通人|影子)/];
 function text(value: unknown, limit: number): string {
-  if (typeof value !== "string" || value !== value.trim() || !value || charCount(value) > limit ||
-    forbidden.some(pattern => pattern.test(value))) throw new Error("UNSAFE_AI_OUTPUT");
+  if (typeof value !== "string" || value !== value.trim() || !value) throw new Error("INVALID_AI_TEXT");
+  if (charCount(value) > limit) throw new Error("AI_OUTPUT_TOO_LONG");
+  if (forbidden.some(pattern => pattern.test(value))) throw new Error("UNSAFE_AI_OUTPUT");
   return value;
 }
 function target(value: unknown, request: AiRequest): string {
