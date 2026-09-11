@@ -12,6 +12,6 @@ LOAD_CLIENTS=100 npm run load:smoke
 
 2026-09-11本地基线：40/40成功，P50约208ms、P95约222ms、最大约223ms。该数据只用于发现明显回归，不是生产SLA。
 
-覆盖生产Next/Socket/SQLite启动、Origin与WebSocket、单层可信代理IP、并发房间创建、会话保存、状态同步和优雅关闭。
+覆盖本地production mode的Next/Socket/SQLite启动、Origin与WebSocket、模拟单层可信代理IP、并发房间创建、会话保存、状态同步和优雅关闭。
 
 未覆盖真实Caddy/CDN链路、校园网共享IP误伤、完整玩家对局、AI并发、长连接持续时间，以及CPU、内存、文件描述符、磁盘和带宽容量。正式预演应在目标服务器逐级增加负载并监控资源，在错误率或资源达到阈值时停止。

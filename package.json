@@ -21,7 +21,8 @@
     "test": "node --test tests/*.test.ts",
     "typecheck": "next typegen && node scripts/normalize-next-env.mjs && tsc --noEmit",
     "audit:repo": "node scripts/audit-repository.mjs",
-    "check": "npm run typecheck && npm test"
+    "check:docs": "node scripts/check-doc-links.mjs",
+    "check": "npm run typecheck && npm run check:docs && npm test"
   },
   "dependencies": {
     "lucide-react": "^0.542.0",
