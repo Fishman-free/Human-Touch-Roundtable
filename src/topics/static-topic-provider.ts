@@ -116,6 +116,18 @@ const allTopicPacks: readonly TopicPackV1[] = [{
     3: ["水杯完成了KPI，肾脏还在加班。", "八杯水到了，第九杯开始负责焦虑。", "喝水别卷，厕所已经先表示反对。"],
   },
 }, {
+  schemaVersion: 1, packId: "zhihu-2026-09-11-shanghai-money", source: "zhihu", curatedAt: "2026-09-11T00:00:00.000Z",
+  question: {
+    id: "2034727530125595098", title: "你在上海真的会自卑，因为没钱吗？",
+    url: "https://www.zhihu.com/question/2034727530125595098",
+    topAnswerExcerpt: "高消费和密集比较可能放大经济压力，但自卑也与职业预期、社交关系和个人评价体系有关。",
+    topConsensusSummary: "城市比较会放大压力，但没钱不必然等于自卑。",
+  }, tags: ["城市", "心理"], defaults: {
+    1: ["高消费会放大压力，但没钱不等于自卑。", "比较越密集，经济差距越容易被看见。", "城市只提供坐标，自我评价才决定感受。"],
+    2: ["正方：高消费城市会持续放大经济差距感。", "反方：自卑更多来自比较方式而不是城市本身。", "正方：住房和社交成本会直接塑造日常体验。"],
+    3: ["上海没空让你自卑，房租先让你清醒。", "城市只展示账单，自卑是附加服务。", "钱包负责现实，朋友圈负责放大。"],
+  },
+}, {
   schemaVersion: 1, packId: "zhihu-2026-09-11-rest-fatigue", source: "zhihu", curatedAt: "2026-09-11T00:00:00.000Z",
   question: {
     id: "1981112146696893075", title: "不上班为什么也很疲惫？", url: "https://www.zhihu.com/question/1981112146696893075",
@@ -156,6 +168,12 @@ const verifiedPackIds = new Set([
   "zhihu-2026-09-11-seasoning-formula",
   "zhihu-2026-09-11-living-room",
   "zhihu-2026-09-11-status-industries",
+  "zhihu-2026-09-11-front-camera",
+  "zhihu-2026-09-11-ancient-night",
+  "zhihu-2026-09-11-parent-boundary",
+  "zhihu-2026-09-11-daily-beer",
+  "zhihu-2026-09-11-drinking-water",
+  "zhihu-2026-09-11-short-drama",
 ]);
 export const productionTopicPacks = candidateTopicPacks.filter(pack => verifiedPackIds.has(pack.packId));
 

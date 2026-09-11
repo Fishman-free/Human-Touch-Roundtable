@@ -77,8 +77,8 @@ test("题目缓存按候选隔离、返回副本并在TTL后重新核验", async
 });
 
 test("题目环境组装开发默认静态，生产默认要求真实核验网关", () => {
-  assert.equal(candidateTopicPacks.length, 10);
-  assert.equal(productionTopicPacks.length, 3);
+  assert.equal(candidateTopicPacks.length, 11);
+  assert.equal(productionTopicPacks.length, 9);
   assert.ok(productionTopicPacks.every(pack => candidateTopicPacks.includes(pack)));
   assert.ok(createTopicProvider({}, true) instanceof StaticTopicProvider);
   assert.throws(() => createTopicProvider({}, false), /ZHIHU_ACCESS_SECRET_REQUIRED/);
@@ -151,6 +151,19 @@ test("搜索核验优先使用标题引语，并容忍标题标点差异", async
   const question = { id: "123", title: "为什么教程都用「两勺生抽一勺老抽」？", url: "https://www.zhihu.com/question/123" };
   await new ZhihuSearchQuestionGateway(client).verify(question, new AbortController().signal);
   assert.deepEqual(queries, ["两勺生抽一勺老抽"]);
+});
+
+test("无引语问题先使用去问句框架的关键词查询", async () => {
+  const queries: string[] = [];
+  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", minRequestIntervalMs: 0, fetch: async input => {
+    queries.push(new URL(String(input)).searchParams.get("Query")!);
+    return response({ HasMore: false, SearchHashId: "hash", Items: [{ Title: "不上班为什么也很疲惫？ - 知乎",
+      ContentType: "Answer", ContentID: "1", ContentText: "回答", Url: "https://www.zhihu.com/question/123/answer/1",
+      VoteUpCount: 1, CommentCount: 0, CommentInfoList: [], AuthorityLevel: "4", RankingScore: 1 }] });
+  } });
+  await new ZhihuSearchQuestionGateway(client).verify({ id: "123", title: "不上班为什么也很疲惫？",
+    url: "https://www.zhihu.com/question/123" }, new AbortController().signal);
+  assert.deepEqual(queries, ["不上班 也很疲惫"]);
 });
 
 test("知乎URL关联只接受官方问题及回答路径", () => {
