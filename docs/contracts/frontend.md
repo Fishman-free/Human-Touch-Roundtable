@@ -42,6 +42,8 @@ const MyRoundtable: RoomSlots['Roundtable'] = ({ view, theme }) => (
 
 主要回调：`ready(boolean)`、`answer(text, stance?)`、`accuse(targetSeatId,text)`、`respond(text)`、`followup(text)`、`skipFollowup()`、`castVote(targetSeatId)`。这些方法不返回胜负或新状态，下一次状态由服务端推送；等待时读取`busy`。
 
+默认`useGameSession`内部使用持久化单命令Outbox。组件不得自行生成第二个重试commandId，也不应在`busy`或状态未知时重复提交。完整语义见[命令确认与重试](../architecture/command-retry.md)。注入假`GameSession`时可以直接同步更新预览状态，无需模拟重试器。
+
 只从`src/contracts/public.ts`导入公开协议类型（使用`import type`）。不要在客户端引入GameState、RoomRuntime、SessionService或SQLite。不得通过隐藏DOM来“隐藏”角色：不该看到的数据本就不应下发。
 
 ## 验收与当前边界
