@@ -48,7 +48,7 @@
 
 2026-09-11已用真实Access Secret完成热榜、搜索和生产提供器核验；凭据未写入仓库。当前账号实测知乎搜索额度为10次/日，当日批量验证在额度归零后停止，未循环重试。普通CI使用脱敏最小响应夹具，不发起在线请求。
 
-目录当前有10个正式候选，其中3个已成功在线核验并进入`productionTopicPacks`，其余7个只在开发静态题库中可见，不能进入生产轮换。另有2个旧开发题，不属于正式候选。
+目录当前有11个正式候选，其中9个已成功在线核验并进入`productionTopicPacks`，其余2个只在开发静态题库中可见，不能进入生产轮换。另有2个旧开发题，不属于正式候选。
 
 手动在线核验使用：
 
@@ -56,9 +56,11 @@
 ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run verify:zhihu
 ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run verify:zhihu -- --all
 ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run verify:zhihu -- --candidates
+ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run verify:zhihu -- --pending
+ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run verify:zhihu -- --candidate <pack-id>
 ZHIHU_ACCESS_SECRET="通过安全环境注入" npm run zhihu:hot
 ```
 
-`--all`验证已进入生产的题；`--candidates`验证全部待审核候选。脚本只输出状态、packId、问题ID、选中回答URL、赞同数、片段长度和核验时间，不输出凭据或完整回答。热榜工具只输出问题元数据和截断摘要。
+`--all`验证已进入生产的题；`--candidates`验证全部候选；`--pending`仅验证尚未进入生产的候选；`--candidate`按ID验证单个候选。脚本只输出状态、packId、问题ID、选中回答URL、赞同数、片段长度和核验时间，不输出凭据或完整回答。热榜工具只输出问题元数据和截断摘要。
 
 HTTP客户端将请求串行化，默认最短间隔1秒，可用`ZHIHU_MIN_REQUEST_INTERVAL_MS`调大；业务码`30001`仍直接返回失败，不自动循环重试。当前缓存不跨进程，SQLite持久化题目缓存仍是后续工作。

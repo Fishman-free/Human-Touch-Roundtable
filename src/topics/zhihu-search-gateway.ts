@@ -12,7 +12,8 @@ function title(value: string) {
 }
 function queries(value: string) {
   const quoted = [...value.matchAll(/「([^」]{4,80})」/g)].map(match => match[1]).sort((a, b) => b.length - a.length);
-  return [...new Set([...quoted, value])];
+  const keywords = value.replace(/[？?]/g, "").replace(/为什么/g, " ").replace(/\s+/g, " ").trim();
+  return [...new Set(quoted.length ? [...quoted, value] : [keywords, value])];
 }
 
 export class ZhihuSearchQuestionGateway implements ZhihuQuestionGateway {
