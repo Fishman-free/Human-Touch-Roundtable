@@ -45,6 +45,7 @@ test("LLM网关在主供应商失败后切换备用供应商并只记录安全�
   assert.deepEqual(events.map(event => [event.provider, event.status]),
     [["primary", "provider-error"], ["backup", "success"]]);
   assert.ok(!JSON.stringify(events).includes("UPSTREAM_DOWN"));
+  assert.equal(events[0].errorCode, undefined);
 });
 
 test("不安全或不符合结构的模型输出触发failover", async () => {
@@ -96,4 +97,14 @@ test("环境组装开发默认Mock，生产禁止Mock且live必须有供应商",
   assert.ok(createAiProvider({}, true) instanceof MockAiProvider);
   assert.throws(() => createAiProvider({ AI_MODE: "mock" }, false), /MOCK_AI_NOT_ALLOWED_IN_PRODUCTION/);
   assert.throws(() => createAiProvider({ AI_MODE: "live" }, true), /INVALID_LLM_PROVIDERS/);
+  assert.throws(() => createAiProvider({ AI_MODE: "live", GLM_API_KEY: "key", GLM_ENDPOINT: "http://localhost" }, true),
+    /INVALID_LLM_PROVIDER_CONFIG/);
+});
+
+test("供应商HTTP错误只暴露收敛后的错误码", async () => {
+  const events: AiAttemptEvent[] = [];
+  const provider = new StubProvider("glm", new Error("LLM_HTTP_401"));
+  await assert.rejects(new LlmGateway([provider], { onAttempt: event => events.push(event) })
+    .act(request("answer"), new AbortController().signal), /AI_PROVIDERS_EXHAUSTED/);
+  assert.equal(events[0].errorCode, "LLM_HTTP_401");
 });

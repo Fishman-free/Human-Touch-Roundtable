@@ -21,9 +21,12 @@ RoomRuntime → AiProvider
 - 生产默认`AI_MODE=live`，明确禁止Mock伪装为生产AI。
 - `DEEPSEEK_API_KEY`和`GLM_API_KEY`存在时按该顺序加入故障切换链。
 - 模型名可分别通过`DEEPSEEK_MODEL`、`GLM_MODEL`覆盖。
+- 官方端点为默认值；受信任部署可用`DEEPSEEK_ENDPOINT`、`GLM_ENDPOINT`配置HTTPS兼容代理。端点属于服务端高信任配置，不能来自玩家输入。
 - `AI_ATTEMPT_TIMEOUT_MS`默认8000；每次实际时限不会超过当前游戏阶段剩余时间。
 
 仓库和日志不得包含API Key。普通CI只使用假供应商和录制结构，不发起计费请求。
+
+真实验收先用`npm run verify:llm -- --action answer`做单动作探测，成功后再用`--all`覆盖三轮回答、指认、回应、追问和投票。脚本只输出命令类型及安全尝试元数据；上游HTTP错误收敛为`LLM_HTTP_<状态码>`，不输出响应正文。
 
 ## 输出约束
 
@@ -44,4 +47,4 @@ RoomRuntime → AiProvider
 
 ## 尚未验证
 
-DeepSeek/GLM真实响应格式、模型对JSON模式的实际支持、配额错误、网络代理、内容安全效果和成本均需使用项目方密钥单独验收。当前代码具备接入通道，不等于真实供应商已经接通。
+2026-09-11使用一组`pk-proxy`形态的GLM凭据访问官方智谱端点，返回HTTP 401。该凭据需要对应代理端点，或改用官方智谱API Key；在取得正确端点/密钥前，真实响应格式、JSON模式、配额、内容安全效果和成本仍未验收。
