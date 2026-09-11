@@ -40,9 +40,11 @@ const MyRoundtable: RoomSlots['Roundtable'] = ({ view, theme }) => (
 
 组件只要求`GameSession`显式接口，不依赖hook实现。可在合作者的预览工具里注入包含`RoomView`的假session及操作回调；不用mock数据库、Socket或AI。
 
-主要回调：`ready(boolean)`、`answer(text, stance?)`、`accuse(targetSeatId,text)`、`respond(text)`、`followup(text)`、`skipFollowup()`、`castVote(targetSeatId)`。这些方法不返回胜负或新状态，下一次状态由服务端推送；等待时读取`busy`。
+主要回调：`ready(boolean)`、`answer(text, stance?)`、`accuse(targetSeatId,text)`、`respond(text)`、`followup(text)`、`skipFollowup()`、`castVote(targetSeatId)`。这些方法返回`void`，调用返回不表示服务端接受或失败；组件只能通过`busy`、`error`和后续`RoomView`判断结果。
 
-默认`useGameSession`内部使用持久化单命令Outbox。组件不得自行生成第二个重试commandId，也不应在`busy`或状态未知时重复提交。完整语义见[命令确认与重试](../architecture/command-retry.md)。注入假`GameSession`时可以直接同步更新预览状态，无需模拟重试器。
+默认`useGameSession`内部使用持久化单命令Outbox。组件不得自行生成第二个重试commandId，也不应在`busy`或状态未知时重复提交。“最多3次”指当前在线连续尝试；断线恢复后会重置该轮尝试计数。状态未知时`busy`会解除，但Outbox仍占用，新动作会被拒绝。完整语义见[命令确认与重试](../architecture/command-retry.md)。注入假`GameSession`时可以直接同步更新预览状态，无需模拟重试器。
+
+创建/加入房间使用`requestId`且不进入Outbox；入场后游戏写动作才使用`commandId + matchId + phaseToken`，两者不能混用。
 
 只从`src/contracts/public.ts`导入公开协议类型（使用`import type`）。不要在客户端引入GameState、RoomRuntime、SessionService或SQLite。不得通过隐藏DOM来“隐藏”角色：不该看到的数据本就不应下发。
 

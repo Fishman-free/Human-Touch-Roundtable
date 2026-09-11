@@ -4,6 +4,20 @@
 
 当前已实现TypeScript游戏核心、房间运行时、Socket.IO会话协议和SQLite持久化，包含候场准备、题目与角色配置校验、三轮回答、辩论、投票、结算、身份视图裁剪、串行命令、计时、题目轮换、AI任务编排及断线/进程恢复。
 
+## 当前验证状态
+
+| 能力 | 状态 |
+|---|---|
+| 核心、Socket、SQLite恢复 | 已有自动测试；不等于公网验收 |
+| 知乎题目 | 11个正式候选，9个已在线核验并进入运行时生产集合，2个待核验 |
+| GLM | 清华代理`glm-5.3-flash`七动作单次真实验证通过 |
+| DeepSeek | 仅接入和failover代码，未用真实Key验证 |
+| 内容安全 | 基础确定性过滤，不是完整审核系统 |
+| 负载 | 本地production mode的40并发观战房间冒烟，未经过真实Caddy/CDN |
+| 管理员API | 内部运维接口，不得仅凭Bearer Token直接暴露公网 |
+
+完整证据边界见[验证状态矩阵](docs/contracts/validation-status.md)。当前项目**不能表述为已经完成公网生产验收**。
+
 ## 运行检查
 
 要求 Node.js 22.18+，使用 Node 原生 TypeScript 类型剥离运行测试。
@@ -43,6 +57,7 @@ npm run smoke:prod
 ## 文件入口
 
 - [规则书](docs/product/game-rules.md)：已经冻结的产品规则。
+- [验证状态矩阵](docs/contracts/validation-status.md)：代码、CI、真实外部验证和目标环境验收的区别。
 - [核心设计](docs/architecture/game-core-design.md)：状态机、协议和模块边界。
 - [核心调用约定](docs/architecture/core-usage.md)：应用层如何调用与保存核心结果。
 - [房间运行时](docs/architecture/runtime-usage.md)：运行时生命周期、依赖接口和一致性边界。
@@ -58,7 +73,7 @@ npm run smoke:prod
 - [崩溃与恢复](docs/operations/recovery.md)：跨进程WAL、连续截止和备份恢复演练。
 - [生产部署](docs/operations/deployment.md)：Docker、Caddy、持久卷、发布与人工验收。
 - [预演负载](docs/operations/load-testing.md)：并发WebSocket、可信代理IP和延迟冒烟。
-- [管理员API](docs/operations/admin-api.md)：房间摘要、删除、会话撤销和清理。
+- [管理员API](docs/operations/admin-api.md)：仅限受控运维网络的房间摘要、删除、会话撤销和清理。
 - [隐私工程基线](docs/product/privacy.md)：数据保存、模型传输、保留和删除。
 - `src/game/model.ts`：服务端权威类型、动作与结果。
 - `src/game/transition.ts`：不可变状态转换和超时补全。
@@ -95,6 +110,6 @@ npm run smoke:prod
 
 Socket层签发和验证会话凭据，再把认证身份交给运行时；SQLite可以主动恢复完整私有房间和会话摘要。浏览器版本可用本地题目和模拟AI走完整流程；知乎热榜/搜索及GLM全动作已用真实凭据在线验证，DeepSeek仍仅具备接入和主备切换代码。
 
-正式题库目前有11个候选，其中9个已在线核验并进入生产，其余2个待验证。后续按顺序完成题库核验、真实模型契约测试、内容安全、浏览器请求重试、恢复演练和部署压测。不要把单次知乎核验、开发模拟器或生产基础设施冒烟当作完整公网验收。
+正式题库目前有11个候选，其中9个进入运行时生产集合，其余2个待验证。剩余重点是完整内容审核、真实浏览器弱网E2E、目标环境代理/容量/磁盘演练和管理网络隔离。状态以[验证矩阵](docs/contracts/validation-status.md)为准。
 
 GitHub Actions会执行仓库内容扫描、类型检查、测试和构建。默认排除本地数据库、凭据、构建缓存、第三方工具包、根目录历史策划原稿及本地上传清单。
