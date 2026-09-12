@@ -40,6 +40,7 @@ jobs:
       ALLOW_STATIC_TOPICS_IN_PRODUCTION: 'true'
       DEEPSEEK_API_KEY: ci-placeholder-not-a-real-key
       ADMIN_TOKEN: ci-compose-admin-token-at-least-32-bytes
+      METRICS_TOKEN: ci-compose-metrics-token-at-least-24-bytes
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
