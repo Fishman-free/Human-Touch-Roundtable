@@ -1,5 +1,11 @@
+import { createHash } from "node:crypto";
+
+export const CONTENT_RULE_VERSION = "content-policy-v1";
+export type ContentContext = "human" | "ai" | "topic-pack" | "zhihu-answer";
 export type ContentRejection = "CONTACT_INFO" | "CREDENTIAL" | "PROMPT_INJECTION" | "ROLE_DISCLOSURE";
-export type ContentDecision = { ok: true; text: string } | { ok: false; reason: ContentRejection };
+export type ContentDecision = { ok: true; text: string } | { ok: false; reason: ContentRejection; errorCode: `CONTENT_${ContentRejection}`; ruleVersion: string; digest: string; context: ContentContext };
+export type ContentObservation = { context: ContentContext; accepted: boolean; reason?: ContentRejection; errorCode?: string; ruleVersion: string; digest: string };
+export type ContentObserver = (event: ContentObservation) => void;
 
 const zeroWidth = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
 const controls = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
@@ -31,14 +37,21 @@ export function normalizePublicText(value: string): string {
     .replace(zeroWidth, "").replace(controls, "").replace(/\s+/g, " ").trim();
 }
 
-function decide(value: string, includeRoles: boolean): ContentDecision {
+function decide(value: string, includeRoles: boolean, context: ContentContext, observer?: ContentObserver): ContentDecision {
   const text = normalizePublicText(value);
-  if (contact.some(pattern => pattern.test(text))) return { ok: false, reason: "CONTACT_INFO" };
-  if (credentials.some(pattern => pattern.test(text))) return { ok: false, reason: "CREDENTIAL" };
-  if (injection.some(pattern => pattern.test(text))) return { ok: false, reason: "PROMPT_INJECTION" };
-  if (includeRoles && roleDisclosure.some(pattern => pattern.test(text))) return { ok: false, reason: "ROLE_DISCLOSURE" };
+  const digest = createHash("sha256").update(text).digest("hex");
+  const reject = (reason: ContentRejection): ContentDecision => {
+    const event = { context, accepted: false, reason, errorCode: `CONTENT_${reason}`, ruleVersion: CONTENT_RULE_VERSION, digest } as const;
+    observer?.(event); return { ok: false, reason, errorCode: event.errorCode, ruleVersion: CONTENT_RULE_VERSION, digest, context };
+  };
+  if (contact.some(pattern => pattern.test(text))) return reject("CONTACT_INFO");
+  if (credentials.some(pattern => pattern.test(text))) return reject("CREDENTIAL");
+  if (injection.some(pattern => pattern.test(text))) return reject("PROMPT_INJECTION");
+  if (includeRoles && roleDisclosure.some(pattern => pattern.test(text))) return reject("ROLE_DISCLOSURE");
+  observer?.({ context, accepted: true, ruleVersion: CONTENT_RULE_VERSION, digest });
   return { ok: true, text };
 }
 
-export function checkHumanContent(value: string): ContentDecision { return decide(value, false); }
-export function checkAiContent(value: string): ContentDecision { return decide(value, true); }
+export function checkContent(value: string, context: ContentContext, observer?: ContentObserver): ContentDecision { return decide(value, context === "ai", context, observer); }
+export function checkHumanContent(value: string, observer?: ContentObserver): ContentDecision { return checkContent(value, "human", observer); }
+export function checkAiContent(value: string, observer?: ContentObserver): ContentDecision { return checkContent(value, "ai", observer); }

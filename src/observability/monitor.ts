@@ -25,7 +25,7 @@ export class OperationalMonitor {
     this.metrics.increment("roundtable_security_events_total", { kind: event.kind });
     this.logger.warn("security.event", { kind: event.kind });
   }
-  lifecycle(event: "server.started" | "server.stopping", fields: Record<string, unknown> = {}) {
+  lifecycle(event: string, fields: Record<string, unknown> = {}) {
     this.logger.info(event, fields);
   }
 }

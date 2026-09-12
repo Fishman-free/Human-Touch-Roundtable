@@ -22,6 +22,7 @@
 4. 执行 `npm run audit:repo`、`npm run check`、`npm run build`。
 5. UI改动在PR中附桌面/移动截图；后端改动附触发条件、结果及对应回归测试。
 6. 提交前检查 `git status --short` 和 `git diff --cached`，不要提交数据库、密钥或运行日志。
+7. 负载相关改动使用 `npm run load:staged` 分阶段验证，并在PR中记录测试环境、阶段结果、资源指标和未覆盖项；本地production mode冒烟不能写成公网容量验收。
 
 真实凭据只能通过本机进程环境、部署密钥系统或GitHub Secrets注入，不得放入Issue、PR、文档、截图或测试夹具。已经通过聊天或其他非部署密钥通道共享的凭据，在正式部署前必须轮换。
 
