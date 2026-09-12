@@ -4,9 +4,9 @@ import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import test from "node:test";
 
-function run(script: string, args: string[]) {
+function run(script: string, args: string[], env: Record<string, string> = {}) {
   return new Promise<{ code: number | null; output: string }>((resolveRun) => {
-    const child = spawn(process.execPath, [script, ...args], { cwd: resolve("."), stdio: ["ignore", "pipe", "pipe"] }); let output = "";
+    const child = spawn(process.execPath, [script, ...args], { cwd: resolve("."), env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] }); let output = "";
     child.stdout.on("data", chunk => { output += String(chunk); }); child.stderr.on("data", chunk => { output += String(chunk); });
     child.once("exit", code => resolveRun({ code, output }));
   });
@@ -16,7 +16,7 @@ test("备份校验拒绝损坏文件，恢复工具拒绝覆盖并可恢复独�
   const directory = await mkdtemp(join("/tmp", "roundtable-backup-tools-"));
   try {
     const source = join(directory, "source.db"); const backup = join(directory, "backup.db"); const restored = join(directory, "restored.db");
-    const created = await run("scripts/backup.ts", [backup]); assert.equal(created.code, 0, created.output);
+    const created = await run("scripts/backup.ts", [backup], { DATABASE_PATH: source }); assert.equal(created.code, 0, created.output);
     const checked = await run("scripts/verify-backup.ts", [backup]); assert.equal(checked.code, 0, checked.output); assert.match(checked.output, /"integrity":"ok"/);
     const copied = JSON.parse(await readFile(`${backup}.json`, "utf8")); assert.equal(copied.sha256.length, 64); assert.equal(copied.databaseVersion, 2);
     const restoredResult = await run("scripts/restore-backup.ts", [backup, restored]); assert.equal(restoredResult.code, 0, restoredResult.output);
