@@ -1,6 +1,6 @@
 # AI网关与供应商契约
 
-> 网关、结构化解析与组装已实现；GLM有七动作单次真实验证，DeepSeek未用真实Key验证。完整边界见[验证状态矩阵](../contracts/validation-status.md)。
+> 网关、结构化解析与组装已实现；GLM和DeepSeek均有七动作单次真实验证。完整边界见[验证状态矩阵](../contracts/validation-status.md)。
 
 ## 分层
 

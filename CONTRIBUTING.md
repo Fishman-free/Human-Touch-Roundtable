@@ -32,7 +32,7 @@ typecheck会先运行`next typegen`，再把Next受本地缓存影响的`next-en
 
 ## 当前限制
 
-开发默认使用本地题目和模拟AI。知乎已有9个在线核验生产题；GLM七动作做过单次真实验证；DeepSeek尚未使用真实Key。真实外部验证不进入普通CI，也不等于长期稳定或生产容量验收。详细状态以[验证矩阵](docs/contracts/validation-status.md)为准。
+开发默认使用本地题目和模拟AI。知乎已有9个在线核验生产题；GLM和DeepSeek均做过七动作单次真实验证。真实外部验证不进入普通CI，也不等于长期稳定或生产容量验收。详细状态以[验证矩阵](docs/contracts/validation-status.md)为准。
 
 基础内容过滤不是完整审核。应用层并发冒烟未经过真实Caddy/CDN。管理员API只能放在受控运维网络，Bearer认证不能替代VPN、防火墙和审计。SQLite使用同步API，P0按单进程运行。仓库暂未选定开源许可证，第三方`zhihu/`工具包默认不上传。
 
