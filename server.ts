@@ -38,7 +38,7 @@ if (metricsToken !== undefined && Buffer.byteLength(metricsToken) < 24) throw ne
 if (adminToken !== undefined && Buffer.byteLength(adminToken) < 32) throw new Error("ADMIN_TOKEN must contain at least 32 bytes");
 const http = createServer((request, response) => {
   void (async () => {
-    if (await handleAdminRequest(request, response, adminToken, context)) return;
+    if (await handleAdminRequest(request, response, adminToken, context, event => monitor.lifecycle("admin.audit", event as unknown as Record<string, unknown>))) return;
     if (await handleOperationalRequest(request, response, {
       ready: () => ready && context.check(), metrics: () => monitor.metrics.render(), metricsToken,
     })) return;
