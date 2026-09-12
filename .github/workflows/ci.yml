@@ -47,6 +47,7 @@ jobs:
         with:
           node-version: '22.23.2'
           cache: npm
+      - run: npm ci
       - run: docker compose -f compose.yaml -f compose.ci.yaml build app
       - name: Start isolated Compose app
         run: docker compose -f compose.yaml -f compose.ci.yaml up -d app
