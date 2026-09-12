@@ -65,4 +65,5 @@ npm run load:smoke
 GitHub `main`的Verify工作流执行生产构建、生产进程冒烟、`docker build`和`docker compose config`；具体结果以仓库Actions页面为准。真实域名环境仍需单独验收。
 
 应用层并发和可信代理冒烟见[负载测试](load-testing.md)。
+没有正式服务器时，使用[临时部署与验收](temporary-acceptance.md)；该流程不能替代本页的正式环境验收。
 管理员操作见[内部管理员API](admin-api.md)，数据处理见[隐私工程基线](../product/privacy.md)。

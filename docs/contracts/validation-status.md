@@ -24,6 +24,8 @@
 | 浏览器命令重试 | Outbox状态机自动验证 | 真实浏览器弱网、休眠、标签页崩溃E2E |
 | 应用负载 | 本地production mode下40个并发观战房间，P95约0.2秒 | 未经过真实Caddy/CDN；没有完整对局、AI并发和资源容量结论 |
 | Docker与Compose | GitHub Actions构建和配置解析 | 没有部署到正式域名和持久卷 |
+| 临时 Compose 集成 | CI 启动隔离 app 容器，健康检查、首页、备份文件和重启 | 非公网、无真实用户/供应商；不证明正式域名、Caddy/CDN 或容量 |
+| 临时公网隧道 | 按[临时验收](../operations/temporary-acceptance.md)由人工执行后记录证据 | 当前仓库未声称已完成；需逐次记录地址、时间和结果 |
 | 管理员API | 自动测试及生产进程冒烟 | 只有Bearer认证；没有VPN、防火墙、IP allowlist、角色权限或管理审计 |
 
 “生产题目”只表示位于`productionTopicPacks`、允许生产题目提供器轮换，不表示整个系统已经完成公网生产验收。

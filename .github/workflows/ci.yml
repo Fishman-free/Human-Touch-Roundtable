@@ -29,3 +29,35 @@ jobs:
           SESSION_HMAC_KEY: ci-compose-session-key-at-least-32-bytes
           DEEPSEEK_API_KEY: ci-placeholder-not-a-real-key
           METRICS_TOKEN: ci-compose-metrics-token-at-least-24-bytes
+  compose-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.23.2'
+          cache: npm
+      - run: docker compose build app
+      - name: Start isolated Compose app
+        env:
+          DOMAIN: roundtable.example.com
+          SESSION_HMAC_KEY: ci-compose-session-key-at-least-32-bytes
+          TOPIC_MODE: static
+          ALLOW_STATIC_TOPICS_IN_PRODUCTION: 'true'
+          DEEPSEEK_API_KEY: ci-placeholder-not-a-real-key
+          ADMIN_TOKEN: ci-compose-admin-token-at-least-32-bytes
+        run: docker compose up -d app
+      - name: Verify container health and persistence surface
+        env:
+          ADMIN_TOKEN: ci-compose-admin-token-at-least-32-bytes
+        run: |
+          trap 'docker compose down -v --remove-orphans' EXIT
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/api/health/ready && break || sleep 2; done
+          curl -fsS http://127.0.0.1:3000/api/health/live
+          curl -fsS http://127.0.0.1:3000/ >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/admin/rooms)" = 401
+          docker compose exec -T app npm run backup -- /app/data/backups/ci.db
+          docker compose exec -T app test -s /app/data/backups/ci.db
+          docker compose restart app
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/api/health/ready && break || sleep 2; done

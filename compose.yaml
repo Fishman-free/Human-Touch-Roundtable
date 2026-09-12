@@ -26,6 +26,9 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
     volumes:
       - roundtable_data:/app/data
+    # Local CI/temporary acceptance only; keep the app behind Caddy in a real deployment.
+    ports:
+      - "127.0.0.1:3000:3000"
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped
