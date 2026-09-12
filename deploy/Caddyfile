@@ -7,5 +7,7 @@
     Permissions-Policy "camera=(), microphone=(), geolocation=()"
     -Server
   }
+  @admin path /api/admin/*
+  respond @admin 404
   reverse_proxy app:3000
 }
