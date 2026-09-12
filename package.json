@@ -14,6 +14,7 @@
     "start": "NODE_ENV=production node server.ts",
     "smoke:prod": "tsx scripts/smoke-production.ts",
     "load:smoke": "node scripts/load-smoke.ts",
+    "compose:integration": "node scripts/compose-integration.ts",
     "load:staged": "node scripts/load-staged.ts",
     "verify:zhihu": "node scripts/verify-zhihu-provider.ts",
     "verify:llm": "node scripts/verify-llm-provider.ts",

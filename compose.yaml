@@ -5,7 +5,7 @@ services:
     environment:
       DATABASE_PATH: /app/data/roundtable.db
       SESSION_HMAC_KEY: ${SESSION_HMAC_KEY:?SESSION_HMAC_KEY is required}
-      ALLOWED_ORIGINS: https://${DOMAIN:?DOMAIN is required}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${DOMAIN:?DOMAIN is required}}
       TRUST_PROXY_HOPS: "1"
       TOPIC_MODE: ${TOPIC_MODE:-verified}
       ALLOW_STATIC_TOPICS_IN_PRODUCTION: ${ALLOW_STATIC_TOPICS_IN_PRODUCTION:-false}
@@ -26,6 +26,9 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
     volumes:
       - roundtable_data:/app/data
+    # Local CI/temporary acceptance only; keep the app behind Caddy in a real deployment.
+    ports:
+      - "127.0.0.1:3000:3000"
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped
