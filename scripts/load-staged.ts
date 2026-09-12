@@ -17,9 +17,19 @@ for (const clients of phases) {
   sample();
 }
 const deadline = Date.now() + durationMs;
-while (Date.now() < deadline) { await new Promise(resolve => setTimeout(resolve, Math.min(30_000, deadline - Date.now()))); sample(); }
-process.stdout.write(JSON.stringify({ status: "completed", startedAt, durationMs, phases, samples, limitations: [
+let rounds = 0;
+while (Date.now() < deadline) {
+  rounds++;
+  await new Promise<void>((resolve, reject) => {
+  const holdMs = Math.max(0, deadline - Date.now());
+  const child = spawn("npm", ["run", "load:smoke"], { stdio: "inherit", env: { ...process.env, LOAD_CLIENTS: String(Number(process.env.LOAD_LONG_CLIENTS ?? 40)), LOAD_HOLD_MS: String(holdMs) } });
+    child.once("error", reject); child.once("exit", code => code === 0 ? resolve() : reject(new Error(`LOAD_LONG_PHASE_FAILED:${code}`)));
+  });
+  sample();
+}
+process.stdout.write(JSON.stringify({ status: "completed", startedAt, durationMs, phases, longRounds: rounds, samples, limitations: [
   "Existing load-smoke creates spectator rooms and does not simulate complete player games or real AI calls.",
   "Run this harness on the target host with external CPU, memory, file descriptor and disk monitors.",
+  "The long phase keeps re-running the full connection/sync workload; each smoke process is isolated, so it is not a single uninterrupted socket session.",
   "Thirty-minute local production mode is not a public capacity or SLA result.",
 ] }) + "\n");
