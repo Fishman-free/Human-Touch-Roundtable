@@ -1,0 +1,10 @@
+services:
+  app:
+    environment:
+      ALLOWED_ORIGINS: http://127.0.0.1:3000
+      TOPIC_MODE: static
+      ALLOW_STATIC_TOPICS_IN_PRODUCTION: "true"
+    ports:
+      - "127.0.0.1:3000:3000"
+  caddy:
+    profiles: [production-only]
