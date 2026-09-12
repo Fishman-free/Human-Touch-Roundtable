@@ -73,6 +73,7 @@ npm run smoke:prod
 - [崩溃与恢复](docs/operations/recovery.md)：跨进程WAL、连续截止和备份恢复演练。
 - [生产部署](docs/operations/deployment.md)：Docker、Caddy、持久卷、发布与人工验收。
 - [预演负载](docs/operations/load-testing.md)：并发WebSocket、可信代理IP和延迟冒烟。
+- [分阶段压测](docs/operations/load-testing.md)：10/40客户端阶段、长连接演练和正式报告采集清单。
 - [管理员API](docs/operations/admin-api.md)：仅限受控运维网络的房间摘要、删除、会话撤销和清理。
 - [隐私工程基线](docs/product/privacy.md)：数据保存、模型传输、保留和删除。
 - `src/game/model.ts`：服务端权威类型、动作与结果。
@@ -113,3 +114,5 @@ Socket层签发和验证会话凭据，再把认证身份交给运行时；SQLit
 正式题库目前有11个候选，其中9个进入运行时生产集合，其余2个待验证。剩余重点是完整内容审核、真实浏览器弱网E2E、目标环境代理/容量/磁盘演练和管理网络隔离。状态以[验证矩阵](docs/contracts/validation-status.md)为准。
 
 GitHub Actions会执行仓库内容扫描、类型检查、测试和构建。默认排除本地数据库、凭据、构建缓存、第三方工具包、根目录历史策划原稿及本地上传清单。
+
+负载验证使用 `npm run load:staged` 按阶段记录环境、连接、回执、广播、AI、SQLite、恢复和主机资源指标。现有本地脚本使用静态题目和占位模型，只能发现明显回归，不能表述为完整玩家压测或公网生产容量验收。

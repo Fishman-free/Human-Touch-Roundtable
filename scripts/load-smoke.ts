@@ -62,6 +62,8 @@ try {
   const result = { clients, succeeded: latencies.length, p50Ms: Math.round(percentile(0.5)),
     p95Ms: Math.round(percentile(0.95)), maxMs: Math.round(sorted.at(-1)!) };
   assert.ok(result.p95Ms < 10_000, `p95 exceeded smoke threshold: ${JSON.stringify(result)}`);
+  const holdMs = Number(process.env.LOAD_HOLD_MS ?? 0);
+  if (Number.isSafeInteger(holdMs) && holdMs > 0) await new Promise(resolve => setTimeout(resolve, holdMs));
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {
   for (const socket of sockets) socket.disconnect();
