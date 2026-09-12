@@ -11,7 +11,7 @@
 | 核心、Socket、SQLite恢复 | 已有自动测试；不等于公网验收 |
 | 知乎题目 | 11个正式候选，9个已在线核验并进入运行时生产集合，2个待核验 |
 | GLM | 清华代理`glm-5.3-flash`七动作单次真实验证通过 |
-| DeepSeek | 仅接入和failover代码，未用真实Key验证 |
+| DeepSeek | `deepseek-v4-flash`七动作单次真实验证通过；未证明长期稳定性和容量 |
 | 内容安全 | 基础确定性过滤，不是完整审核系统 |
 | 负载 | 本地production mode的40并发观战房间冒烟，未经过真实Caddy/CDN |
 | 管理员API | 内部运维接口，不得仅凭Bearer Token直接暴露公网 |
