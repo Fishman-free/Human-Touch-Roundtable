@@ -109,7 +109,7 @@ export class RoomRegistry {
 
   list() { return this.deps.store.list(); }
 
-  async delete(roomId: string): Promise<boolean> {
+  async delete(roomId: string, expectedVersion?: number): Promise<boolean> {
     if (this.closing || this.deleting.has(roomId)) return false;
     this.deleting.add(roomId);
     try {
@@ -119,7 +119,7 @@ export class RoomRegistry {
         this.runtimes.delete(roomId);
       }
       const record = await this.deps.store.load(roomId);
-      return record ? this.deps.store.delete(roomId, record.version) : false;
+      return record && (expectedVersion === undefined || record.version === expectedVersion) ? this.deps.store.delete(roomId, record.version) : false;
     } finally { this.deleting.delete(roomId); }
   }
 

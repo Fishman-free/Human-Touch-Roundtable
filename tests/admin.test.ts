@@ -49,9 +49,9 @@ test("管理员只读房间摘要不泄露matchId、答案、身份或会话", a
 test("管理员可删除房间、撤销会话和触发清理", async () => {
   const token = "admin-token-at-least-32-bytes-long";
   const app = await harness(token);
-  const options = { method: "POST", headers: { authorization: `Bearer ${token}` } };
+  const options = { method: "POST", headers: { authorization: `Bearer ${token}`, "x-admin-reason": "test maintenance" } };
   try {
-    assert.equal((await fetch(`${app.origin}/api/admin/rooms/demo`, { ...options, method: "DELETE" })).status, 200);
+    assert.equal((await fetch(`${app.origin}/api/admin/rooms/demo?expectedVersion=3`, { ...options, method: "DELETE" })).status, 200);
     assert.equal((await fetch(`${app.origin}/api/admin/sessions/abcdefghij/revoke`, options)).status, 200);
     const cleanup = await fetch(`${app.origin}/api/admin/cleanup`, options);
     assert.deepEqual(await cleanup.json(), { ok: true, sessionsDeleted: 2 });

@@ -74,7 +74,7 @@ export function createServerContext(config: ServerContextConfig, providers: {
       return persistence.backup(path);
     },
     listRooms: () => rooms.list(),
-    deleteRoom: (roomId: string) => rooms.delete(roomId),
+    deleteRoom: (roomId: string, expectedVersion?: number) => rooms.delete(roomId, expectedVersion),
     revokeSession: (sessionId: string) => sessions.revoke(sessionId),
     async cleanup() {
       await rooms.cleanupExpired();
