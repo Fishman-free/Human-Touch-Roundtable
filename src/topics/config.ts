@@ -5,6 +5,7 @@ import { CachedTopicProvider } from "./cached-topic-provider.ts";
 import { VerifiedTopicProvider } from "./verified-topic-provider.ts";
 import { ZhihuContentClient } from "./zhihu-content-client.ts";
 import { ZhihuSearchQuestionGateway } from "./zhihu-search-gateway.ts";
+import { PersistentTopicCache } from "./persistent-topic-cache.ts";
 
 export function createTopicProvider(environment: Readonly<Record<string, string | undefined>>,
   development: boolean): TopicProvider {
@@ -22,7 +23,8 @@ export function createTopicProvider(environment: Readonly<Record<string, string 
     const provider = new VerifiedTopicProvider(productionTopicPacks,
       new ZhihuSearchQuestionGateway(new ZhihuContentClient({ accessSecret: secret, minRequestIntervalMs: interval })));
     const ttl = Number(environment.ZHIHU_TOPIC_CACHE_MS ?? 6 * 60 * 60 * 1_000);
-    return new CachedTopicProvider(provider, ttl);
+    const cachePath = environment.ZHIHU_TOPIC_CACHE_PATH;
+    return cachePath ? new PersistentTopicCache(provider, cachePath, ttl, Date.now, event => console.warn(JSON.stringify({ event: "topic.verification.alert", ...event }))) : new CachedTopicProvider(provider, ttl);
   }
   throw new Error("INVALID_TOPIC_MODE");
 }
