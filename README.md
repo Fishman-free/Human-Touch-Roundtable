@@ -56,6 +56,8 @@ npm run smoke:prod
 
 ## 文件入口
 
+- [知乎登录与公共匹配](docs/operations/zhihu-login-matchmaking.md)：airoundtable.stream回调配置、匿名匹配和真实授权待验收项。
+
 - [规则书](docs/product/game-rules.md)：已经冻结的产品规则。
 - [验证状态矩阵](docs/contracts/validation-status.md)：代码、CI、真实外部验证和目标环境验收的区别。
 - [核心设计](docs/architecture/game-core-design.md)：状态机、协议和模块边界。

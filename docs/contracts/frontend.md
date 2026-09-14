@@ -38,6 +38,8 @@ const MyRoundtable: RoomSlots['Roundtable'] = ({ view, theme }) => (
 
 ## GameSession：无需启动后端的开发入口
 
+可选`GameSession.matchmaking`提供账号、等待/请求状态、错误和匹配/取消/退出动作。HTTP轮询在客户端hook内，匹配复用原Socket恢复协议；未提供该字段的预览session保持可用。详见[知乎登录与公共匹配](../operations/zhihu-login-matchmaking.md)。
+
 组件只要求`GameSession`显式接口，不依赖hook实现。可在合作者的预览工具里注入包含`RoomView`的假session及操作回调；不用mock数据库、Socket或AI。
 
 主要回调：`ready(boolean)`、`answer(text, stance?)`、`accuse(targetSeatId,text)`、`respond(text)`、`followup(text)`、`skipFollowup()`、`castVote(targetSeatId)`。这些方法返回`void`，调用返回不表示服务端接受或失败；组件只能通过`busy`、`error`和后续`RoomView`判断结果。

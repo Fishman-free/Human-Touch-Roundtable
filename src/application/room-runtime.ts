@@ -137,6 +137,14 @@ export class RoomRuntime {
     return this.closePromise;
   }
 
+  /** Used only for expiring public matchmaking lobbies; queued ready commands win in order. */
+  closeIfLobby(): Promise<boolean> {
+    return this.enqueue(async () => {
+      if (this.closed || this.closing || this.record.state.phase !== "lobby") return false;
+      this.closing = true; this.stop(); return true;
+    });
+  }
+
   private enqueue<T>(action: () => Promise<T>): Promise<T> {
     const job = this.tail.then(action);
     this.tail = job.then(() => {}, () => {});

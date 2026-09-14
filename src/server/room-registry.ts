@@ -109,6 +109,20 @@ export class RoomRegistry {
 
   list() { return this.deps.store.list(); }
 
+  async deleteLobby(roomId: string): Promise<boolean> {
+    if (this.closing || this.deleting.has(roomId)) return false;
+    const runtime = await this.get(roomId);
+    if (!runtime) return true;
+    if (this.closing || this.deleting.has(roomId)) return false;
+    this.deleting.add(roomId);
+    try {
+      if (!await runtime.closeIfLobby()) return false;
+      this.runtimes.delete(roomId);
+      const record = await this.deps.store.load(roomId);
+      return !record || (record.state.phase === "lobby" && await this.deps.store.delete(roomId, record.version));
+    } finally { this.deleting.delete(roomId); }
+  }
+
   async delete(roomId: string, expectedVersion?: number): Promise<boolean> {
     if (this.closing || this.deleting.has(roomId)) return false;
     this.deleting.add(roomId);
