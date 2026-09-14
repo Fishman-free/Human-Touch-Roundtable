@@ -19,3 +19,6 @@ export const gamePresentation = {
 export function seatLabel(seatId?: string) {
   return seatId ? `${Number(seatId.slice(1))}号席` : "未指定";
 }
+
+export const seatAliases = ["看山", "听雨", "观雾", "闻花", "说岳", "读江", "拾叶", "踏径"] as const;
+export function seatAlias(seatId?: string) { const n = seatId ? Number(seatId.slice(1)) : 0; return seatAliases[(n - 1) % seatAliases.length] ?? "看山"; }

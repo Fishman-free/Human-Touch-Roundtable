@@ -6,7 +6,7 @@
 
 | 区域 | 主要负责人 | 变更范围 |
 |---|---|---|
-| `src/components/`、`src/ui/`、`src/app/globals.css`、`public/` | 前端合作者 | 主题、组件、布局、素材、交互展示 |
+| `src/components/`、`src/ui/`、`src/app/globals.css`、`public/` | 前端合作者 | 主题、组件、布局、素材、交互展示；可直接使用[前端视觉Agent提示词](docs/agents/frontend-visual-agent.md) |
 | `src/client/` | 前后端协商 | 会话、请求重试、Socket生命周期 |
 | `src/contracts/`、`src/server/socket-contracts.ts`、`src/game/projection.ts` | 前后端共同审阅 | 公开状态、事件、错误码与可见性 |
 | `src/game/`、`src/application/`、`src/server/`、`src/repository/` | 后端 | 规则、认证、并发、保存、恢复 |
