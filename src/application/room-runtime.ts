@@ -3,8 +3,8 @@ import type { GameState, Topic } from "../game/model.ts";
 import { aiContext, project, type Viewer } from "../game/projection.ts";
 import { advanceTime, createGame, transition } from "../game/transition.ts";
 import { assignSeats } from "./seat-assignment.ts";
-import type { AiAction, AiCommand, CommandAck, DiagnosticKind, PlayerRequest, RoomRecord,
-  RoomView, RuntimeDependencies, RuntimeErrorCode, RuntimeOptions } from "./ports.ts";
+import type { AiAction, AiCommand, CommandAck, DiagnosticKind, PlayerRequest, RandomSource,
+  RoomRecord, RoomView, RuntimeDependencies, RuntimeErrorCode, RuntimeOptions } from "./ports.ts";
 
 const defaults: RuntimeOptions = {
   topicTimeoutMs: 10_000, aiTimeoutMs: 15_000, retryMs: 1_000,
@@ -25,6 +25,15 @@ function canonical(value: unknown): unknown {
 }
 function fingerprint(request: PlayerRequest): string {
   return createHash("sha256").update(JSON.stringify(canonical(request))).digest("hex");
+}
+// A new room draws its own starting candidate so consecutive games do not all serve
+// the same question. The draw is stored in the record, so reopening a room stays on
+// it, and a failed candidate still advances one step at a time from there.
+function startingCandidate(count: number, random: RandomSource): number {
+  if (count <= 0) return 0;
+  const index = random.integer(count);
+  if (!Number.isInteger(index) || index < 0 || index >= count) throw new Error("INVALID_RANDOM_SOURCE");
+  return index;
 }
 
 export class RoomRuntime {
@@ -59,7 +68,7 @@ export class RoomRuntime {
     let record = await deps.store.load(roomId);
     if (!record) {
       record = { version: 0, state: createGame(matchId, deps.clock.now()), receipts: [],
-        preparation: { candidateIndex: 0, cycles: 0, retryAt: 0 } };
+        preparation: { candidateIndex: startingCandidate(deps.topics.candidateIds.length, deps.random), cycles: 0, retryAt: 0 } };
       if (!await deps.store.save(roomId, null, structuredClone(record))) throw new Error("ROOM_CONFLICT");
     }
     if (record.state.matchId !== matchId) throw new Error("WRONG_MATCH");

@@ -129,8 +129,8 @@ class BlockingStore implements RoomStore {
   }
 }
 
-function deps(clock: FakeClock, store: RoomStore = new MemoryRoomStore(), topics: TopicProvider = new TopicFixture({ good: topic }), ai: AiProvider = new PassiveAi()) {
-  return { clock, store, topics, ai, random: new SequenceRandom(),
+function deps(clock: FakeClock, store: RoomStore = new MemoryRoomStore(), topics: TopicProvider = new TopicFixture({ good: topic }), ai: AiProvider = new PassiveAi(), random: RandomSource = new SequenceRandom()) {
+  return { clock, store, topics, ai, random,
     events: [] as string[], diagnose(event: { kind: string }) { this.events.push(event.kind); } };
 }
 
@@ -147,9 +147,9 @@ function request(runtime: RoomRuntime, id: string, command: PlayerCommand): Play
   return { commandId: id, matchId: view.matchId, phaseToken: view.phaseToken, command };
 }
 
-async function startRuntime(options: { count?: number; clock?: FakeClock; store?: RoomStore; topics?: TopicProvider; ai?: AiProvider } = {}) {
+async function startRuntime(options: { count?: number; clock?: FakeClock; store?: RoomStore; topics?: TopicProvider; ai?: AiProvider; random?: RandomSource } = {}) {
   const clock = options.clock ?? new FakeClock();
-  const dependencies = deps(clock, options.store, options.topics, options.ai);
+  const dependencies = deps(clock, options.store, options.topics, options.ai, options.random);
   const runtime = await RoomRuntime.open("room", "match", dependencies, {
     topicTimeoutMs: 100, aiTimeoutMs: 100, retryMs: 10, topicBackoffMs: 20, topicMaxBackoffMs: 80,
   });
@@ -197,7 +197,8 @@ test("并发命令串行执行，同一命令幂等，不同载荷复用ID被拒
 test("候场完成后轮换失败题目，取得有效题目才开局", async () => {
   const clock = new FakeClock();
   const topics = new TopicFixture({ bad: new Error("HTTP_500"), malformed: { ...topic, url: "https://example.com" }, good: topic });
-  const dependencies = deps(clock, undefined, topics);
+  // Draw the first candidate so the assertion pins the failover order itself.
+  const dependencies = deps(clock, undefined, topics, undefined, new SequenceRandom([0]));
   const runtime = await RoomRuntime.open("topics", "m", dependencies, { topicTimeoutMs: 100, topicBackoffMs: 20, topicMaxBackoffMs: 80 });
   for (let i = 0; i < 2; i++) await runtime.dispatch(`p${i}`, request(runtime, `j${i}`, { type: "join" }));
   for (let i = 0; i < 2; i++) await runtime.dispatch(`p${i}`, request(runtime, `r${i}`, { type: "ready", ready: true }));
@@ -212,7 +213,7 @@ test("一轮候选全失败后退避重试，不高频循环", async () => {
   const clock = new FakeClock();
   const store = new MemoryRoomStore();
   const topics = new TopicFixture({ a: new Error("A"), b: new Error("B") });
-  const runtime = await RoomRuntime.open("backoff", "m", deps(clock, store, topics), {
+  const runtime = await RoomRuntime.open("backoff", "m", deps(clock, store, topics, undefined, new SequenceRandom([0])), {
     topicTimeoutMs: 100, topicBackoffMs: 20, topicMaxBackoffMs: 80,
   });
   for (let i = 0; i < 2; i++) await runtime.dispatch(`p${i}`, request(runtime, `j${i}`, { type: "join" }));
@@ -241,6 +242,37 @@ test("一轮候选全失败后退避重试，不高频循环", async () => {
   await flushUntil(() => topics.calls.length >= 6, "doubled backoff cycle");
   assert.deepEqual(topics.calls, ["a", "b", "a", "b", "a", "b"]);
   await runtime.close();
+});
+
+test("新房间使用抽到的候选，不再固定从第一个题目开始", async () => {
+  const clock = new FakeClock();
+  const topics = new TopicFixture({ a: topic, b: topic, c: topic });
+  const runtime = await RoomRuntime.open("random-topic", "m",
+    deps(clock, undefined, topics, undefined, new SequenceRandom([2])), { topicTimeoutMs: 100 });
+  for (let i = 0; i < 2; i++) await runtime.dispatch(`p${i}`, request(runtime, `j${i}`, { type: "join" }));
+  for (let i = 0; i < 2; i++) await runtime.dispatch(`p${i}`, request(runtime, `r${i}`, { type: "ready", ready: true }));
+  await flushUntil(() => runtime.view({ kind: "spectator" }).phase === "answering", "drawn topic candidate");
+  assert.deepEqual(topics.calls, ["c"]);
+  await runtime.close();
+});
+
+test("重开已有房间沿用已抽取的候选，重启不换题", async () => {
+  const store = new MemoryRoomStore();
+  const topics = new TopicFixture({ a: topic, b: topic, c: topic });
+  const first = await RoomRuntime.open("stable-topic", "m",
+    deps(new FakeClock(), store, topics, undefined, new SequenceRandom([2])), { topicTimeoutMs: 100 });
+  await first.close();
+  const second = await RoomRuntime.open("stable-topic", "m",
+    deps(new FakeClock(), store, topics, undefined, new SequenceRandom([0])), { topicTimeoutMs: 100 });
+  assert.equal((await store.load("stable-topic"))!.preparation.candidateIndex, 2);
+  await second.close();
+});
+
+test("随机源返回越界下标时拒绝开局", async () => {
+  const topics = new TopicFixture({ a: topic, b: topic });
+  await assert.rejects(() => RoomRuntime.open("bad-random", "m",
+    deps(new FakeClock(), undefined, topics, undefined, { integer: () => 7 }), { topicTimeoutMs: 100 }),
+    /INVALID_RANDOM_SOURCE/);
 });
 
 test("AI任务在队列外完成并通过核心提交，广播发生在保存后", async () => {
