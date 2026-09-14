@@ -17,7 +17,11 @@ const llm = createLlmProviders(environment, false);
 if (!llm.length) throw new Error("NO_LLM_PROVIDERS: warming now would cache fallback content");
 if (!environment.ZHIHU_TOPIC_CACHE_PATH) throw new Error("ZHIHU_TOPIC_CACHE_PATH_REQUIRED");
 
-const provider = await openTopicProvider(environment, false, { llm });
+// Fallback events are surfaced, not swallowed: a silent fallback rate is how a
+// too-tight generation budget goes unnoticed while the run still reports success.
+const provider = await openTopicProvider(environment, false, {
+  llm, onAlert: event => process.stdout.write(`${JSON.stringify(event)}\n`),
+});
 process.stdout.write(`${JSON.stringify({ event: "warm.start", candidates: provider.candidateIds.length,
   models: llm.map(item => `${item.id}:${item.model}`) })}\n`);
 

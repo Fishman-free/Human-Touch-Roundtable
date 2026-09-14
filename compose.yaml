@@ -28,8 +28,11 @@ services:
       AI_ATTEMPT_TIMEOUT_MS: ${AI_ATTEMPT_TIMEOUT_MS:-14000}
       AI_MAX_TOKENS: ${AI_MAX_TOKENS:-1024}
       TOPIC_AI_MAX_TOKENS: ${TOPIC_AI_MAX_TOKENS:-2048}
-      TOPIC_AI_TIMEOUT_MS: ${TOPIC_AI_TIMEOUT_MS:-8000}
-      TOPIC_TIMEOUT_MS: ${TOPIC_TIMEOUT_MS:-20000}
+      # Measured against the production model: median 6.5s, observed max 9.4s per
+      # generation. An 8s budget silently pushed ~a quarter of topics onto the
+      # deterministic fallback text.
+      TOPIC_AI_TIMEOUT_MS: ${TOPIC_AI_TIMEOUT_MS:-18000}
+      TOPIC_TIMEOUT_MS: ${TOPIC_TIMEOUT_MS:-30000}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_ENDPOINT: ${DEEPSEEK_ENDPOINT:-https://api.deepseek.com/chat/completions}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
