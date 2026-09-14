@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { GameState, Topic } from "../game/model.ts";
 import { aiContext, project, type Viewer } from "../game/projection.ts";
 import { advanceTime, createGame, transition } from "../game/transition.ts";
+import { aiBeatMs, AI_BEAT_MS } from "../game/rules.ts";
 import { assignSeats } from "./seat-assignment.ts";
 import type { AiAction, AiCommand, CommandAck, DiagnosticKind, PlayerRequest, RandomSource,
   RoomRecord, RoomView, RuntimeDependencies, RuntimeErrorCode, RuntimeOptions } from "./ports.ts";
@@ -274,6 +275,26 @@ export class RoomRuntime {
     }).then(value => finish({ ok: true, value }), () => finish({ ok: false }));
   }
 
+  // A model replies in milliseconds, so an AI seat that speaks the moment its phase
+  // opens is the loudest tell at the table. Each seat draws its own beat, and the
+  // beat is capped so generation still finishes before the phase deadline.
+  private aiBeat(state: GameState): number {
+    const spread = AI_BEAT_MS.max - AI_BEAT_MS.min;
+    const drawn = AI_BEAT_MS.min + this.deps.random.integer(spread + 1);
+    if (state.deadlineAt === undefined) return drawn;
+    return aiBeatMs(drawn, state.deadlineAt - this.now(), this.options.aiTimeoutMs);
+  }
+
+  // Resolves early when the phase ends: reconcile() aborts every task it owns, and
+  // the abort listener releases the wait instead of leaving it to run out.
+  private pause(ms: number, signal: AbortSignal): Promise<void> {
+    if (ms <= 0 || signal.aborted) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      const cancel = this.schedule(() => resolve(), ms);
+      signal.addEventListener("abort", () => { cancel(); resolve(); }, { once: true });
+    });
+  }
+
   private startTopic() {
     const candidates = this.deps.topics.candidateIds;
     const index = this.record.preparation.candidateIndex % Math.max(1, candidates.length);
@@ -323,10 +344,19 @@ export class RoomRuntime {
       const key = `ai:${state.phaseToken}:${seatId}`;
       if (this.aiAttempts.has(key)) continue;
       this.aiAttempts.add(key);
-      const request = { matchId: state.matchId, phaseToken: state.phaseToken, seatId, action,
-        deadlineAt: state.deadlineAt!, context: aiContext(state, seatId) };
-      this.task<AiCommand>(key, Math.min(this.options.aiTimeoutMs, state.deadlineAt! - this.now()),
-        signal => this.deps.ai.act(request, signal), async outcome => {
+      const beat = this.aiBeat(state);
+      const deadlineAt = state.deadlineAt!;
+      // The beat runs outside the room's command queue, and the context is read
+      // after it: a seat that waits also answers what the table has said meanwhile.
+      this.task<AiCommand>(key, Math.min(beat + this.options.aiTimeoutMs, deadlineAt - this.now()),
+        async signal => {
+          await this.pause(beat, signal);
+          if (signal.aborted) throw new Error("ABORTED");
+          const current = this.record.state;
+          return this.deps.ai.act({ matchId: current.matchId, phaseToken: current.phaseToken, seatId, action,
+            deadlineAt: current.deadlineAt ?? deadlineAt, context: aiContext(current, seatId) }, signal);
+        },
+        async outcome => {
           if (!outcome.ok) { this.report("ai-failed"); return; }
           const command = outcome.value;
           if (!command || (command.type !== action && !(action === "followup" && command.type === "skip-followup"))) {
@@ -335,7 +365,7 @@ export class RoomRuntime {
           let result;
           try {
             result = transition(this.record.state, { kind: "ai", seatId }, {
-              matchId: request.matchId, phaseToken: request.phaseToken, command,
+              matchId: state.matchId, phaseToken: state.phaseToken, command,
             }, this.now());
           } catch { this.report("ai-invalid"); return; }
           if (!result.ok) { this.report("ai-invalid"); return; }

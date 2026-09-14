@@ -1,5 +1,5 @@
 import type { Actor, Command, CommandEnvelope, ErrorCode, GameLogEntry, GameState, Phase, Round, Seat, Topic, TransitionResult } from "./model.ts";
-import { ANSWER_LIMIT, ANSWER_MS, charCount, DEBATE_MS, DEBATE_STEP_MS, MAX_DEBATE_BYTES, roleCounts, VOTE_MS } from "./rules.ts";
+import { ANSWER_LIMIT, ANSWER_MS, charCount, DEBATE_MS, DEBATE_STEP_MS, MAX_DEBATE_BYTES, READ_PAUSE_MS, roleCounts, VOTE_MS } from "./rules.ts";
 import { settle } from "./settlement.ts";
 import { PLAYER_LIMITS } from "../contracts/rules.ts";
 import { checkHumanContent } from "../safety/content-policy.ts";
@@ -30,6 +30,12 @@ function phase(state: GameState, next: Phase, now: number, duration?: number) {
 function beginRound(state: GameState, round: Round, now: number) {
   state.round = round;
   phase(state, "answering", now, ANSWER_MS);
+}
+// The round is over, but the phase keeps it open a beat longer so the last answers
+// can be read. This reuses the deadline the phase already has, so advanceTime()
+// ends the round on its own and no extra state has to be persisted or replayed.
+function holdRound(state: GameState, now: number) {
+  state.deadlineAt = now + READ_PAUSE_MS;
 }
 function endRound(state: GameState, now: number) {
   if (state.round! < 3) beginRound(state, (state.round! + 1) as Round, now);
@@ -205,7 +211,7 @@ function apply(state: GameState, actor: Actor, command: Command, now: number) {
     } else requireRule(command.stance === undefined, "INVALID_INPUT");
     text(answer, ANSWER_LIMIT[state.round!]);
     addAnswer(state, seat.seatId, answer, now);
-    if (state.answers[state.round!].length === state.seats.length) endRound(state, now);
+    if (state.answers[state.round!].length === state.seats.length) holdRound(state, now);
     return;
   }
   if (command.type === "vote") {

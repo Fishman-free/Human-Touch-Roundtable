@@ -3,7 +3,7 @@ import test from "node:test";
 import type { Actor, Command, GameState, Role, Seat, Topic } from "../src/game/model.ts";
 import { advanceTime, createGame, transition } from "../src/game/transition.ts";
 import { aiContext, project } from "../src/game/projection.ts";
-import { charCount, roleCounts } from "../src/game/rules.ts";
+import { ANSWER_MS, charCount, DEBATE_MS, READ_PAUSE_MS, roleCounts } from "../src/game/rules.ts";
 
 const topic: Topic = {
   provenance: { packId: "test-topic", source: "zhihu", curatedAt: "2026-09-10T00:00:00.000Z" },
@@ -50,6 +50,8 @@ function answered(count = 3) {
     for (const seat of state.seats) state = ok(state, actor(seat), {
       type: "answer", round, text: "这是我的回答", ...(round === 2 ? { stance: "pro" as const } : {}),
     });
+    // 全员发言完毕后本轮还要停留一小段才推进，见「最后一人发言完毕后……」用例。
+    state = advanceTime(state, state.deadlineAt!);
   }
   assert.equal(state.phase, "debating");
   return state;
@@ -137,6 +139,45 @@ test("第二轮强制立场，前缀计入50字且不会截断", () => {
   assert.equal(charCount(state.answers[2][0].text), 50);
 });
 
+test("最后一人发言完毕后本轮停留再推进，最后一条回答有时间被读完", () => {
+  let state = started();
+  for (const seat of state.seats.slice(0, -1)) state = ok(state, actor(seat), { type: "answer", round: 1, text: "先说完了" });
+  assert.equal(state.round, 1);
+  assert.equal(state.deadlineAt, ANSWER_MS, "还没说完时倒计时不动");
+  state = ok(state, actor(state.seats.at(-1)!), { type: "answer", round: 1, text: "最后一个" });
+  assert.equal(state.round, 1, "阶段没有随最后一条回答立刻翻页");
+  assert.equal(state.phase, "answering");
+  const held = state;
+  assert.equal(held.deadlineAt, held.lastNow + READ_PAUSE_MS);
+  assert.equal(advanceTime(held, held.deadlineAt! - 1).round, 1, "停留期间不推进");
+  state = advanceTime(held, held.deadlineAt!);
+  assert.equal(state.round, 2);
+  assert.equal(state.phase, "answering");
+  assert.equal(state.deadlineAt, held.deadlineAt! + ANSWER_MS, "下一轮拿到完整的时限");
+});
+
+test("第三轮结束后同样停留，辩论在停留结束时才接管，八分钟从那一刻算起", () => {
+  let state = started();
+  for (const round of [1, 2] as const) {
+    for (const seat of state.seats) state = ok(state, actor(seat), {
+      type: "answer", round, text: "回答", ...(round === 2 ? { stance: "pro" as const } : {}),
+    });
+    state = advanceTime(state, state.deadlineAt!);
+  }
+  for (const seat of state.seats) state = ok(state, actor(seat), { type: "answer", round: 3, text: "回答" });
+  assert.equal(state.phase, "answering");
+  const held = state;
+  state = advanceTime(held, held.deadlineAt!);
+  assert.equal(state.phase, "debating");
+  assert.equal(state.debate!.globalDeadlineAt, held.deadlineAt! + DEBATE_MS);
+});
+
+test("超时补全不额外停留：轮次时限已经给过，补完默认答案直接推进", () => {
+  const state = advanceTime(started(), ANSWER_MS);
+  assert.equal(state.round, 2);
+  assert.equal(state.deadlineAt, ANSWER_MS * 2);
+});
+
 test("边界时刻先补默认答案再拒绝迟到动作；旧轮次令牌不能进入新轮次", () => {
   const initial = started();
   const result = send(initial, person(0), { type: "answer", round: 1, text: "迟到" }, 90_000);
@@ -189,7 +230,8 @@ test("只能辩论后投票，禁止自投、空目标和改票，投票中不�
   state = ok(state, person(0), { type: "vote", targetSeatId: "s4" });
   assert.equal(send(state, person(0), { type: "vote", targetSeatId: "s5" }).ok, false);
   const view = project(state, { kind: "spectator" });
-  assert.deepEqual(view.votes, [{ voterSeatId: "s1", targetSeatId: "s4", at: 0 }]);
+  // 时刻随对局推进，这里要钉的是「只有这一票、且只暴露这三个字段」。
+  assert.deepEqual(view.votes, [{ voterSeatId: "s1", targetSeatId: "s4", at: state.votes[0].at }]);
   assert.equal(view.result, undefined);
 });
 

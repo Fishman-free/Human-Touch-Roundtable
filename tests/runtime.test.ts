@@ -4,7 +4,7 @@ import type { AiCommand, AiProvider, AiRequest, Clock, PlayerCommand, PlayerRequ
 import { RoomRuntime } from "../src/application/room-runtime.ts";
 import { assignSeats } from "../src/application/seat-assignment.ts";
 import type { Topic } from "../src/game/model.ts";
-import { roleCounts } from "../src/game/rules.ts";
+import { AI_BEAT_MS, aiBeatMs, roleCounts } from "../src/game/rules.ts";
 import { MemoryRoomStore } from "../src/repository/memory-room-store.ts";
 import { advanceTime } from "../src/game/transition.ts";
 import { RoomRegistry } from "../src/server/room-registry.ts";
@@ -280,6 +280,7 @@ test("AI任务在队列外完成并通过核心提交，广播发生在保存后
   const store = new MemoryRoomStore();
   const ai = new AnsweringAi();
   const { runtime } = await startRuntime({ clock, store, ai });
+  clock.advance(AI_BEAT_MS.max);   // 走完 AI 座位自己的发言节拍
   await flushUntil(() => ai.requests.length === 1 && runtime.view({ kind: "spectator" }).answers[1].length === 1, "AI answer");
   const persisted = await store.load("room");
   assert.equal(persisted!.state.answers[1].length, 1);
@@ -290,9 +291,32 @@ test("AI任务在队列外完成并通过核心提交，广播发生在保存后
   await runtime.close();
 });
 
+test("AI座位发言前先等待自己的节拍，不会在阶段开放瞬间抢答", async () => {
+  const clock = new FakeClock();
+  const ai = new AnsweringAi();
+  // 固定随机源把座位分配和抽题钉死，节拍因此取下界，可以精确断言边界。
+  const { runtime } = await startRuntime({ clock, ai, random: { integer: () => 0 } });
+  assert.equal(ai.requests.length, 0, "阶段刚开放时不该有请求");
+  clock.advance(AI_BEAT_MS.min - 1);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(ai.requests.length, 0, "节拍没走完不发请求");
+  clock.advance(1);
+  await flushUntil(() => ai.requests.length === 1, "节拍走完后的AI请求");
+  await flushUntil(() => runtime.view({ kind: "spectator" }).answers[1].length === 1, "AI回答落库");
+  await runtime.close();
+});
+
+test("节拍受阶段剩余时间约束，短阶段不会把生成预算等掉", () => {
+  assert.equal(aiBeatMs(10_000, 90_000, 15_000), 10_000, "长阶段不受影响");
+  assert.equal(aiBeatMs(10_000, 20_000, 15_000), 5_000, "指认阶段只剩五秒可以等");
+  assert.equal(aiBeatMs(3_000, 20_000, 15_000), 3_000, "下界之内不放大");
+  assert.equal(aiBeatMs(10_000, 5_000, 15_000), 0, "剩余时间不够生成就直接发请求");
+});
+
 test("AI结果迟到后作废，截止时只补一条默认答案", async () => {
   const ai = new DeferredAi();
   const { runtime, clock } = await startRuntime({ ai });
+  clock.advance(AI_BEAT_MS.max);   // 走完 AI 座位自己的发言节拍
   await flushUntil(() => ai.requests.length === 1, "pending AI request");
   for (let i = 0; i < 2; i++) {
     const view = runtime.view({ kind: "participant", participantId: `p${i}` });

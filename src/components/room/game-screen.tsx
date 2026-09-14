@@ -112,6 +112,10 @@ function AnswerStage({ view, busy, submit }: { view: RoomView; busy: boolean; su
   const presentation = copy.rounds[round];
   const used = charCount(round === 2 ? `${stance === "pro" ? "正方" : "反方"}：${text.trim()}` : text.trim());
   const canAnswer = view.actions.includes("answer");
+  // Everyone has spoken, but the round stays open for a beat: the service holds the
+  // phase so the last answers can be read, and this line says so instead of asking
+  // the player to keep waiting for seats that are already done.
+  const roundSpoken = view.round ? view.answers[view.round].length >= view.seats.length : false;
   return <section className="play-band"><header className="stage-header"><div><p className="kicker">第 {round} 轮</p>
     <h2>{presentation.title}</h2><p>{presentation.prompt}</p></div><Timer view={view} /></header>
     {round === 3 && view.topic?.topAnswerExcerpt && <blockquote className="source-answer">{view.topic.topAnswerExcerpt}</blockquote>}
@@ -123,7 +127,8 @@ function AnswerStage({ view, busy, submit }: { view: RoomView; busy: boolean; su
       <div className="composer-foot"><span className={used > presentation.limit ? "over" : ""}>{used} / {presentation.limit}</span>
         <button className="primary" disabled={busy || !text.trim() || used > presentation.limit}
           onClick={() => submit(text, round === 2 ? stance : undefined)}><Send size={17} />确认发言</button></div></div>
-      : <div className="waiting-line"><Check size={17} />{view.self ? "你的回答已锁定，等待其他座位" : "正在观看本轮发言"}</div>}
+      : <div className="waiting-line"><Check size={17} />{roundSpoken ? "本轮发言已结束，请浏览各方回答"
+        : view.self ? "你的回答已锁定，等待其他座位" : "正在观看本轮发言"}</div>}
   </section>;
 }
 
