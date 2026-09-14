@@ -160,34 +160,48 @@ export class LlmTopicContentGenerator implements TopicContentGenerator {
   private maxTokens: number;
   private temperature: number;
   private attemptTimeoutMs: number;
+  private attempts: number;
 
   constructor(providers: readonly LlmProvider[],
-    options: { maxTokens?: number; temperature?: number; attemptTimeoutMs?: number } = {}) {
+    options: { maxTokens?: number; temperature?: number; attemptTimeoutMs?: number; attempts?: number } = {}) {
     this.providers = providers;
     this.maxTokens = options.maxTokens ?? 2_048;
     this.temperature = options.temperature ?? 0.6;
-    this.attemptTimeoutMs = options.attemptTimeoutMs ?? 8_000;
+    this.attemptTimeoutMs = options.attemptTimeoutMs ?? 18_000;
+    // The relay in front of the production model fails intermittently under
+    // sustained serial load; a single retry recovered every observed failure,
+    // and a topic is cached for the whole TTL so the retry costs nothing.
+    this.attempts = options.attempts ?? 2;
     if (!Number.isSafeInteger(this.maxTokens) || this.maxTokens < 64 || this.maxTokens > 4_096 ||
+      !Number.isSafeInteger(this.attempts) || this.attempts < 1 || this.attempts > 5 ||
       !Number.isSafeInteger(this.attemptTimeoutMs) || this.attemptTimeoutMs <= 0) throw new Error("INVALID_TOPIC_AI_OPTIONS");
   }
 
   async generate(input: TopicContentInput, signal: AbortSignal): Promise<TopicContent> {
     if (!this.providers.length) throw new Error("AI_PROVIDERS_EXHAUSTED");
     const request: LlmRequest = { messages: buildTopicMessages(input), temperature: this.temperature, maxTokens: this.maxTokens };
-    // One budget for all providers, not one each, so a failover cannot overrun
-    // the runtime's topic timeout.
+    // One budget for every provider and every round, not one each, so retries and
+    // failover cannot overrun the runtime's topic timeout. Later rounds simply
+    // inherit whatever time is left.
     const deadline = Date.now() + this.attemptTimeoutMs;
-    for (const provider of this.providers) {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) break;
-      const attempt = attemptSignal(signal, remaining);
-      try {
-        const completion = await provider.complete(request, attempt.signal);
-        return parseTopicContent(completion.content);
-      } catch {
-        if (signal.aborted) throw new Error("ABORTED");
-      } finally { attempt.close(); }
+    let lastError: unknown;
+    for (let round = 0; round < this.attempts && Date.now() < deadline; round++) {
+      for (const provider of this.providers) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        const attempt = attemptSignal(signal, remaining);
+        try {
+          const completion = await provider.complete(request, attempt.signal);
+          return parseTopicContent(completion.content);
+        } catch (error) {
+          lastError = error;
+          if (signal.aborted) throw new Error("ABORTED");
+        } finally { attempt.close(); }
+      }
     }
-    throw new Error("AI_PROVIDERS_EXHAUSTED");
+    // Keep the underlying code: a bare AI_PROVIDERS_EXHAUSTED made an
+    // intermittent relay failure indistinguishable from a bad prompt.
+    const detail = lastError instanceof Error && lastError.message ? `: ${lastError.message}` : "";
+    throw new Error(`AI_PROVIDERS_EXHAUSTED${detail}`);
   }
 }

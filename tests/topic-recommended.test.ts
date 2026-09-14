@@ -207,23 +207,35 @@ test("兜底内容仍然过滤联系方式与提示注入并保持正反方齐�
   assert.deepEqual(content.defaults[2].map(item => item.slice(0, 3)), ["正方：", "反方："]);
 });
 
-test("题目内容生成器按顺序故障切换，全部失败后抛出", async () => {
+test("题目内容生成器故障切换、偶发失败重试，全部失败后保留底层原因", async () => {
   const calls: string[] = [];
   const failing: LlmProvider = { id: "a", model: "m",
     async complete() { calls.push("a"); throw new Error("LLM_HTTP_500"); } };
   const working: LlmProvider = { id: "b", model: "m",
     async complete() { calls.push("b"); return { content: JSON.stringify(validContent()) }; } };
+  const input = { title: "问题", topAnswerExcerpt: "摘要" };
+  const signal = new AbortController().signal;
 
   const recovered = await new LlmTopicContentGenerator([failing, working], { attemptTimeoutMs: 1_000 })
-    .generate({ title: "问题", topAnswerExcerpt: "摘要" }, new AbortController().signal);
+    .generate(input, signal);
   assert.deepEqual(calls, ["a", "b"]);
   assert.equal(recovered.defaults[2][0], "正方：习惯确实更可靠。");
 
-  const input = { title: "问题", topAnswerExcerpt: "摘要" };
-  for (const providers of [[failing], []] as LlmProvider[][]) {
-    await assert.rejects(new LlmTopicContentGenerator(providers, { attemptTimeoutMs: 1_000 })
-      .generate(input, new AbortController().signal), /AI_PROVIDERS_EXHAUSTED/);
-  }
+  // The production relay fails intermittently, so one retry must recover it.
+  let attempts = 0;
+  const flaky: LlmProvider = { id: "f", model: "m", async complete() {
+    attempts++;
+    if (attempts === 1) throw new Error("LLM_HTTP_502");
+    return { content: JSON.stringify(validContent()) };
+  } };
+  const retried = await new LlmTopicContentGenerator([flaky], { attemptTimeoutMs: 2_000 }).generate(input, signal);
+  assert.equal(attempts, 2);
+  assert.equal(retried.defaults[2][0], "正方：习惯确实更可靠。");
+
+  await assert.rejects(new LlmTopicContentGenerator([failing], { attemptTimeoutMs: 1_000, attempts: 1 })
+    .generate(input, signal), /AI_PROVIDERS_EXHAUSTED: LLM_HTTP_500/);
+  await assert.rejects(new LlmTopicContentGenerator([], { attemptTimeoutMs: 1_000 })
+    .generate(input, signal), /AI_PROVIDERS_EXHAUSTED/);
 });
 
 test("候选合并器保持顺序并拒绝重复或空集合", async () => {

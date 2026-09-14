@@ -68,7 +68,7 @@ export function createTopicProvider(environment: Readonly<Record<string, string 
       client,
       content: new LlmTopicContentGenerator(options.llm ?? [], {
         maxTokens: Number(environment.TOPIC_AI_MAX_TOKENS ?? 2_048),
-        attemptTimeoutMs: Number(environment.TOPIC_AI_TIMEOUT_MS ?? 8_000),
+        attemptTimeoutMs: Number(environment.TOPIC_AI_TIMEOUT_MS ?? 18_000),
       }),
       answerLimit: Number(environment.ZHIHU_ANSWERS_LIMIT ?? 20),
       fallback: environment.ZHIHU_TOPIC_FALLBACK === "fail" ? "fail" : "static",
