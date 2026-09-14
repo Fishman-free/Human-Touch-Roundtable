@@ -52,4 +52,13 @@ RoomRuntime → AiProvider
 
 所有供应商失败后网关抛出统一错误。RoomRuntime不向客户端显示模型异常，等待阶段截止后使用题目默认答案或未投票规则。
 
+## 题目内容生成
+
+`TOPIC_MODE=recommended`时，动态题目的`topConsensusSummary`与`defaults`也由模型生成，但不走本页的`AiProvider`：`LlmGateway.act()`会把输出交给`parseAiCommand`，那套契约绑定在游戏动作上。题目生成使用独立的`LlmTopicContentGenerator`，依赖更窄的`LlmProvider`接口（只有`complete`），并按同样的顺序做供应商故障切换。
+
+- 供应商由`createLlmProviders`从环境统一构造，与游戏动作共用同一份映射，不重复一套端点与模型默认值。
+- 提示词版本为`roundtable-topic-v1`。输出必须经`normalizeTopicContent`规范化与长度校验，规则与核心`validateTopic`一致；不合规的输出在这里被拦下，而不是等到开局失败。
+- `TOPIC_AI_TIMEOUT_MS`约束的是**全部供应商合计**的预算，不是每个供应商各一份，避免故障切换把运行时的题目超时撑爆。输出上限用`TOPIC_AI_MAX_TOKENS`：`AI_MAX_TOKENS`装不下完整的中文JSON。
+- 生成失败**不向客户端failover**，而是回落到确定性文案（`ZHIHU_TOPIC_FALLBACK=fail`可改为让该候选失败）。一道题必须始终能被解开，缺题会让房间停在preparing。
+
 ## 尚未验证

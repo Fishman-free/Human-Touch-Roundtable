@@ -3,10 +3,10 @@ import { dirname, resolve } from "node:path";
 import { createServer } from "node:http";
 import next from "next";
 import { Server } from "socket.io";
-import { createAiProvider } from "./src/ai/config.ts";
+import { createAiProvider, createLlmProviders } from "./src/ai/config.ts";
 import { createServerContext } from "./src/server/server-context.ts";
 import type { ClientToServerEvents, ServerToClientEvents } from "./src/server/socket-contracts.ts";
-import { createTopicProvider } from "./src/topics/config.ts";
+import { openTopicProvider } from "./src/topics/config.ts";
 import { handleOperationalRequest } from "./src/server/health.ts";
 import { parseOrigins, socketTransportOptions } from "./src/server/socket-security.ts";
 import { OperationalMonitor } from "./src/observability/monitor.ts";
@@ -39,6 +39,11 @@ const metricsToken = process.env.METRICS_TOKEN;
 const adminToken = process.env.ADMIN_TOKEN;
 if (metricsToken !== undefined && Buffer.byteLength(metricsToken) < 24) throw new Error("METRICS_TOKEN must contain at least 24 bytes");
 if (adminToken !== undefined && Buffer.byteLength(adminToken) < 32) throw new Error("ADMIN_TOKEN must contain at least 32 bytes");
+
+// A cold dynamic topic spends one HTTP fetch plus one generation inside a single
+// topic task, which does not fit the core's ten-second default.
+const topicTimeoutMs = Number(process.env.TOPIC_TIMEOUT_MS ?? 20_000);
+if (!Number.isSafeInteger(topicTimeoutMs) || topicTimeoutMs <= 0) throw new Error("INVALID_TOPIC_TIMEOUT_MS");
 const http = createServer((request, response) => {
   void (async () => {
     if (await handleAccountRequest(request, response, oauth, context.matchmaking, trustedProxyHops)) return;
@@ -55,9 +60,16 @@ const http = createServer((request, response) => {
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
   ...socketTransportOptions(allowedOrigins, development),
 });
+// Only TOPIC_MODE=recommended performs I/O here, bounded by
+// ZHIHU_TOPIC_CANDIDATE_TIMEOUT_MS; every other mode returns synchronously.
+const topics = await openTopicProvider(process.env, development, {
+  llm: createLlmProviders(process.env, development),
+  onAlert: event => monitor.lifecycle("topic.candidates.alert", event),
+});
 const context = createServerContext({ databasePath, sessionHmacKey,
+  runtime: { topicTimeoutMs },
   socket: { trustedProxyHops, onSecurityEvent: event => monitor.security(event) } }, {
-  topics: createTopicProvider(process.env, development),
+  topics,
   ai: createAiProvider(process.env, development, event => monitor.ai(event)),
   diagnose: event => monitor.runtime(event),
 });

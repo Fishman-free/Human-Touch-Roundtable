@@ -2,15 +2,8 @@ import { charCount } from "../contracts/rules.ts";
 import type { ZhihuQuestionGateway, ZhihuQuestionReference } from "./verified-topic-provider.ts";
 import { questionIdFromUrl, ZhihuContentClient } from "./zhihu-content-client.ts";
 import { checkHumanContent } from "../safety/content-policy.ts";
+import { excerpt, title } from "./zhihu-text.ts";
 
-function excerpt(value: string, max: number) {
-  const clean = value.replace(/\s+/g, " ").trim();
-  const segments = [...new Intl.Segmenter("zh-CN", { granularity: "grapheme" }).segment(clean)];
-  return segments.length <= max ? clean : `${segments.slice(0, max - 1).map(item => item.segment).join("")}…`;
-}
-function title(value: string) {
-  return value.replace(/\s*-\s*知乎\s*$/, "").normalize("NFKC").toLowerCase().replace(/[\p{P}\p{S}\s]/gu, "");
-}
 function queries(value: string) {
   const quoted = [...value.matchAll(/「([^」]{4,80})」/g)].map(match => match[1]).sort((a, b) => b.length - a.length);
   const keywords = value.replace(/[？?]/g, "").replace(/为什么/g, " ").replace(/\s+/g, " ").trim();

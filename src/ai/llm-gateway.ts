@@ -2,6 +2,7 @@ import type { AiCommand, AiProvider, AiRequest } from "../application/ports.ts";
 import type { LlmProvider } from "./llm-provider.ts";
 import { parseAiCommand } from "./output-parser.ts";
 import { buildPrompt, PROMPT_VERSION } from "./prompt-builder.ts";
+import { attemptSignal } from "./attempt-signal.ts";
 
 export interface AiAttemptEvent {
   provider: string;
@@ -13,16 +14,6 @@ export interface AiAttemptEvent {
   inputTokens?: number;
   outputTokens?: number;
   errorCode?: string;
-}
-
-function attemptSignal(outer: AbortSignal, timeoutMs: number) {
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  outer.addEventListener("abort", abort, { once: true });
-  if (outer.aborted) controller.abort();
-  const timeout = setTimeout(abort, timeoutMs);
-  return { signal: controller.signal, timedOut: () => !outer.aborted && controller.signal.aborted,
-    close: () => { clearTimeout(timeout); outer.removeEventListener("abort", abort); } };
 }
 
 function complete(provider: LlmProvider, request: ReturnType<typeof buildPrompt>, signal: AbortSignal) {

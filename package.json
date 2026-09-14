@@ -19,6 +19,8 @@
     "compose:integration": "node scripts/compose-integration.ts",
     "load:staged": "node scripts/load-staged.ts",
     "verify:zhihu": "node scripts/verify-zhihu-provider.ts",
+    "probe:zhihu-questions": "node scripts/probe-zhihu-question-apis.ts",
+    "warm:topics": "node scripts/warm-topics.ts",
     "verify:llm": "node scripts/verify-llm-provider.ts",
     "verify:llm-models": "node scripts/list-llm-models.ts",
     "inspect:llm-shape": "node scripts/inspect-llm-response-shape.ts",

@@ -15,7 +15,7 @@ Internet → Caddy :443 → app :3000 → SQLite persistent volume
 1. DNS将`DOMAIN`指向服务器。
 2. 生成至少32字节随机`SESSION_HMAC_KEY`和`ADMIN_TOKEN`。需要暴露指标时再配置至少24字节`METRICS_TOKEN`；省略后`/api/metrics`不启用。
 3. 配置DeepSeek或GLM至少一个API Key；生产禁止Mock AI。
-4. 配置知乎开放平台`ZHIHU_ACCESS_SECRET`；默认`TOPIC_MODE=verified`会在凭据缺失时拒绝启动。
+4. 配置知乎开放平台`ZHIHU_ACCESS_SECRET`；默认`TOPIC_MODE=verified`会在凭据缺失时拒绝启动。设为`recommended`可在人工片单之外并入动态推荐题目。
 5. 确保持久卷和备份目标受到访问控制。
 
 不要把生产环境变量写入仓库。按`.env.example`字段在服务器安全配置后运行：
@@ -28,6 +28,27 @@ curl -fsS "https://${DOMAIN}/api/health/ready"
 ```
 
 Caddy自动申请TLS证书并转发WebSocket。`TRUST_PROXY_HOPS=1`只适用于仓库提供的单层Caddy结构；增加CDN或代理后需按真实链路重新验证，不能盲目加大。
+
+## 题目模式切换
+
+`TOPIC_MODE`在`verified`与`recommended`之间切换只需改环境变量并重建容器，不需要重新构建镜像：
+
+```sh
+# 切换到动态推荐题目
+TOPIC_MODE=recommended docker compose up -d --force-recreate app
+# 回滚
+TOPIC_MODE=verified docker compose up -d --force-recreate app
+```
+
+`recommended`在启动时读取`ZHIHU_TOPIC_CANDIDATE_PATH`快照；快照缺失或过期时会在`ZHIHU_TOPIC_CANDIDATE_TIMEOUT_MS`内尝试拉取，失败则退回过期快照，再失败则仅使用人工片单。**启动路径不会因为网络或额度失败而不可用。**
+
+首次切换前建议先预热，让第一局不必承担冷启动的拉取与生成耗时：
+
+```sh
+docker compose exec -T app node scripts/warm-topics.ts
+```
+
+预热必须与运行环境使用同一个`ZHIHU_TOPIC_CACHE_PATH`。该脚本在没有可用模型时会直接拒绝运行，避免把兜底文案当成正式内容写进缓存。
 
 ## 发布
 
@@ -57,6 +78,7 @@ npm run load:smoke
 - 真实域名、证书、云防火墙和反向代理IP解析。
 - DeepSeek真实调用，以及GLM长期配额、稳定性和内容安全。
 - 知乎额度、缓存、片单轮换和长期稳定性。
+- 动态题目的模型生成共识与默认答案的质量、事实准确性和内容安全。
 - 手机与桌面多人完整时长对局。
 - 负载、断网、重启、磁盘不足和备份恢复演练。
 

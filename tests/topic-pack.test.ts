@@ -89,6 +89,18 @@ test("题目环境组装开发默认静态，生产默认要求真实核验网�
   assert.throws(() => createTopicProvider({ TOPIC_MODE: "unknown" }, true), /INVALID_TOPIC_MODE/);
 });
 
+test("recommended模式把动态候选接在人工题之后，人工题下标保持不变", () => {
+  const environment = { TOPIC_MODE: "recommended", ZHIHU_ACCESS_SECRET: "test-only-secret" };
+  const provider = createTopicProvider(environment, false, { recommended: {
+    candidates: [{ questionId: "19550517", title: "问题", url: "https://www.zhihu.com/question/19550517" }],
+    fetchedAt: "2026-09-14T00:00:00.000Z" } });
+  // Curated packs keep indices 0..8 so a room that is mid-preparing still
+  // resolves the same topic after the mode changes.
+  assert.deepEqual(provider.candidateIds.slice(0, productionTopicPacks.length),
+    productionTopicPacks.map(pack => pack.packId));
+  assert.equal(provider.candidateIds.length, productionTopicPacks.length + 1);
+});
+
 function response(data: unknown) {
   return new Response(JSON.stringify({ Code: 0, Message: "success", Data: data }), {
     status: 200, headers: { "content-type": "application/json" },

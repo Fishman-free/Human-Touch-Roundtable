@@ -9,7 +9,10 @@ export type TopicVerificationRecord = { status: TopicVerificationStatus; checked
 
 function classify(error: unknown) {
   const message = error instanceof Error ? error.message : "UNKNOWN";
-  if (/429|QUOTA|RATE/i.test(message)) return "QUOTA_EXHAUSTED";
+  // 30001 is the platform's single code for rate limiting, concurrency limits
+  // and daily quota exhaustion. Without it here, an exhausted quota classified as
+  // a generic verification failure and the alert below never fired.
+  if (/429|QUOTA|RATE|30001/i.test(message)) return "QUOTA_EXHAUSTED";
   if (/ABORT|TIMEOUT/i.test(message)) return "TEMPORARY_TIMEOUT";
   if (/NOT_FOUND|MISMATCH|UNSAFE|INVALID/i.test(message)) return "CONTENT_OR_REFERENCE_INVALID";
   return "VERIFICATION_FAILED";

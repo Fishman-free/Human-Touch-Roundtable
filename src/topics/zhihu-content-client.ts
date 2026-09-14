@@ -10,6 +10,11 @@ export interface ZhihuSearchItem {
   comments: string[];
   rankingScore: number;
 }
+export interface ZhihuRecommendedQuestion { title: string; url: string }
+// ContentToken is deliberately not modelled: nothing consumes it, and requiring
+// a field we ignore would turn unrelated upstream drift into a hard failure.
+export interface ZhihuQuestionAnswer { contentType: string; url: string; summary: string }
+export interface ZhihuAnswerPage { items: ZhihuQuestionAnswer[]; isEnd: boolean; nextOffset?: number }
 
 type Value = Record<string, unknown>;
 function object(value: unknown): value is Value { return typeof value === "object" && value !== null && !Array.isArray(value); }
@@ -67,6 +72,46 @@ export class ZhihuContentClient {
         }),
       };
     });
+  }
+
+  // Paths below are origin-absolute on purpose: the content base path would
+  // otherwise resolve "/api/v1/user/..." to "/api/v1/content/user/...".
+  // An absent query uses the account profile; a provided one scopes the results
+  // to a topic. The platform rejects a blank query with its own 10001, so a
+  // whitespace-only value is refused here instead of spending a request on it.
+  async recommendQuestions(query: string | undefined, count: number, signal: AbortSignal): Promise<ZhihuRecommendedQuestion[]> {
+    if (!Number.isInteger(count) || count < 1 || count > 20) throw new Error("INVALID_ZHIHU_LIMIT");
+    const clean = query?.trim();
+    if (clean !== undefined && (!clean || clean.length > 100)) throw new Error("INVALID_ZHIHU_QUERY");
+    const data = await this.request("/api/v1/user/question_recommendations",
+      clean ? { Query: clean, Count: String(count) } : { Count: String(count) }, signal);
+    if (!Array.isArray(data.Items)) throw new Error("INVALID_ZHIHU_RESPONSE");
+    return data.Items.map(value => {
+      if (!object(value)) throw new Error("INVALID_ZHIHU_RESPONSE");
+      return { title: text(value.Title), url: text(value.Url) };
+    });
+  }
+
+  // One page only. Every page spends one question_answers unit and a single
+  // roundtable topic needs one page, so NextOffset is reported but never followed.
+  async questionAnswers(questionUrl: string, limit: number, signal: AbortSignal): Promise<ZhihuAnswerPage> {
+    if (!/^https:\/\/www\.zhihu\.com\/question\/\d+\/?$/.test(questionUrl) ||
+      !Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("INVALID_ZHIHU_QUESTION_QUERY");
+    const data = await this.request("/api/v1/content/question_answers",
+      { QuestionUrl: questionUrl, Offset: "0", Limit: String(limit) }, signal);
+    if (!Array.isArray(data.Items)) throw new Error("INVALID_ZHIHU_RESPONSE");
+    // Paging is tolerated as absent: we never paginate, so shape drift there must
+    // not fail the feature. The fields we do read stay strict.
+    const paging = object(data.Paging) ? data.Paging : undefined;
+    const nextOffset = paging && typeof paging.NextOffset === "number" ? paging.NextOffset : undefined;
+    return {
+      items: data.Items.map(value => {
+        if (!object(value)) throw new Error("INVALID_ZHIHU_RESPONSE");
+        return { contentType: text(value.ContentType), url: text(value.Url), summary: text(value.Summary) };
+      }),
+      isEnd: paging?.IsEnd === true,
+      ...(nextOffset === undefined ? {} : { nextOffset }),
+    };
   }
 
   private async request(path: string, query: Record<string, string>, signal: AbortSignal): Promise<Value> {
