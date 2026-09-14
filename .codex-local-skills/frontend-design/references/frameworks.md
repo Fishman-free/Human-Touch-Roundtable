@@ -1,0 +1,253 @@
+# Framework Picker
+
+Pinned to September 2026. Update versions when refreshing the skill. Hallucinating stale framework versions in build output is the fastest way to embarrass an AI build.
+
+Use this picker only when choosing a stack. Existing project choices and explicit user
+requirements take precedence over the preferences below. Visual refinement does not authorize
+framework upgrades or migrations. Verify dated suggestions against current primary docs before
+new dependency selection; choose based on the actual application and team constraints.
+
+---
+
+## Decision tree
+
+1. **No-build, single HTML file demo, codepen-style?** -> Plain HTML + CSS + JS, no framework. State the constraint at the top of the file.
+2. **Static content, marketing site, blog, docs?** -> **Astro 7.3.2**
+3. **Interactive app, bundle size matters, you want runes?** -> **SvelteKit 2.70.3** + Svelte 5.57.0
+4. **Small app, no SSR needed, want Vite directly?** -> **Vite 8.2.2** + plain TypeScript or a thin layer (Lit, Solid, vanilla)
+5. **React ecosystem, rendering needs, or team familiarity fit the product?** -> **Next.js 16.3.4** + **React 19.2.8**
+
+For a new project, weigh rendering needs, ecosystem dependencies, team experience, and operating cost before selecting Next.js or an alternative.
+
+React/Next is appropriate when its ecosystem, rendering model, or team familiarity fits the
+product. Compare alternatives against concrete requirements rather than a fixed ranking.
+
+---
+
+## Astro 7.3.2 (Cloudflare-owned since January 16, 2026)
+
+**When.** Content-heavy: marketing pages, docs, blogs, portfolios, landing sites, hybrid sites with islands of interactivity.
+
+**Why.** Server-renders by default, ships zero JS unless you opt in (islands). Excellent integrations (Tailwind, MDX, Cloudflare). Fast.
+
+**Strengths.**
+
+- Component model with `.astro` files - HTML-first, JS optional
+- Islands architecture - hydrate Svelte / React / Vue / Solid components only where needed
+- Built-in image optimization (`astro:assets`)
+- Server actions for forms
+- Rust compiler and Markdown/MDX pipeline, Vite 8, and faster queue-based rendering
+- Advanced Routing, structured development logs, stable route caching, CSP, and Node 22+ minimum
+
+**When NOT.**
+
+- Highly interactive single-page apps (use SvelteKit or Next)
+- App with heavy client state across many routes (use SvelteKit)
+
+**Note.** Astro 7 is a major migration. Run the official upgrade path and review adapter,
+content, and routing changes. Check the [publisher advisories](https://github.com/withastro/astro/security/advisories)
+for each applicable XSS/SSRF fixed range; a blanket 7.1.0 security floor is not verified.
+
+```bash
+# Bun-first (preferred per repo convention)
+bun create astro@latest
+```
+
+---
+
+## SvelteKit 2.70.3 + Svelte 5.57.0
+
+**When.** Interactive apps where bundle size and runtime cost matter. Apps where the team wants explicit reactivity.
+
+**Why.** Smallest runtime in the meta-framework field (~1.6 KB vs React's 40 KB). Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`) replace the implicit reactivity of Svelte 4 with explicit primitives that work in `.svelte` files and plain `.svelte.ts` files.
+
+**Strengths.**
+
+- Tiny output bundles
+- Runes are honest about reactivity (no compiler magic guessing)
+- `+page.svelte` / `+page.server.ts` route convention
+- First-class form actions, no client-side fetcher boilerplate
+
+**When NOT.**
+
+- Pure static content sites (Astro is lighter)
+- Team has no Svelte experience and a tight deadline (the runes shift is non-trivial)
+
+**Required Svelte 5 syntax.** Don't ship Svelte 4 stores in new code:
+
+```svelte
+<script lang="ts">
+  let count = $state(0);
+  let doubled = $derived(count * 2);
+
+  $effect(() => {
+    console.log(`count is ${count}`);
+  });
+</script>
+```
+
+`writable` / `readable` stores still work; new code prefers runes.
+
+```bash
+bunx sv create --install bun
+```
+
+---
+
+## Vite 8.2.2 + plain TS
+
+**When.** Small apps, demos, tools where you want a build but no framework opinions. Single-page tools, internal dashboards with one or two views.
+
+**Why.** Vite is a build tool, not a framework. You bring your own structure. Pair with:
+
+- **Lit** (~5 KB) for web components with reactive properties
+- **Solid** for fine-grained reactivity in JSX without React's overhead
+- Plain DOM + Pointer Events + CSS for the smallest possible footprint
+
+**Strengths.**
+
+- No framework lock-in
+- Hot module reload, fast cold starts
+- TypeScript first-class
+
+**When NOT.**
+
+- Multi-route apps (use SvelteKit or Astro)
+- SSR / SEO matters (use Astro or SvelteKit)
+
+```bash
+bun create vite@latest
+```
+
+---
+
+## Next.js 16.3.4 + React 19.2.8
+
+**When.** React ecosystem dependencies, team familiarity, or a need for Server Components
+and Server Actions make it a suitable fit.
+
+**Why.** It works. It has the largest ecosystem. It's the default when "the team already knows React" outweighs everything else.
+
+**Strengths.**
+
+- Turbopack stable (default bundler in Next 16) - dev startup ~50% faster
+- React Server Components, Server Actions; React 19.2 features (View Transitions, useEffectEvent, Activity)
+- Cache Components with Partial Pre-Rendering and the `"use cache"` directive
+- Largest ecosystem of components, hooks, libraries
+- Vercel-tier hosting integration
+
+**When NOT.**
+
+- Familiarity alone does not resolve a concrete mismatch with the product requirements
+- Static content site (Astro is faster, ships less JS)
+- You want explicit reactivity (Svelte 5 runes are clearer)
+- Bundle size matters (Next is the heaviest in this list)
+
+**Note.** Next.js 15 is still maintained but Next.js 16 stable shipped October 21, 2025. Use 16.3.4 for new projects. Middleware was renamed to `proxy.ts` in 16 to clarify the network boundary.
+
+An established team stack is a legitimate constraint. Keep it unless the user requests a migration or a concrete requirement makes it unsuitable.
+
+```bash
+bun create next-app@latest
+```
+
+---
+
+## Styling when Tailwind is selected
+
+**Tailwind CSS v4.3.3** is an option when utility classes suit the project. Existing CSS,
+component-scoped styles, and other established libraries are equally valid constraints.
+
+**Why this version matters.** v4 rewrote the engine (Oxide, with Lightning CSS for parsing),
+uses CSS-first configuration, and no longer assumes `tailwind.config.js` for new projects.
+
+```css
+/* CSS-first config in v4 */
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #ff6b00;
+  --font-sans: "Inter Variable", system-ui;
+}
+```
+
+**When NOT Tailwind.**
+
+- Type-safe CSS-in-TS required -> **vanilla-extract**
+- Component-scoped CSS without utility classes -> **CSS Modules** or Svelte's built-in `<style>` blocks
+- Plain CSS with custom properties -> entirely fine, especially for small projects
+
+Preserve the existing styling system. Do not introduce Tailwind or replace another library merely to follow this picker.
+
+---
+
+## Animation
+
+- **Plain CSS** - first choice. Transitions, keyframes, `animation-timeline: scroll()` for scroll-driven animations (Baseline 2024)
+- **View Transitions API** - cross-document transitions, supported in modern Chromium and Safari 18+. Use for route changes
+- **Motion** (formerly Framer Motion) - when you need physics-based gestures or complex orchestration in React. Heavier; only when CSS isn't enough
+
+**Avoid.** GSAP for simple cases (it's overkill), Lottie for icon animations (use SVG with CSS), `tsparticles` (the moment you need a particle system, ask whether the page should have one).
+
+---
+
+## Touch and gestures
+
+- **Pointer Events API** - native, supported everywhere. First choice for swipe, drag, pinch detection
+- **CSS scroll-snap** - swipe carousels with zero JS
+- **`@use-gesture/react`** - when in React and you need rich gesture coordination (drag-to-dismiss, pinch-to-zoom, multi-touch). Hook-based, modern API
+- **`@use-gesture/vanilla`** - same library without React
+
+**Hammer.js is legacy.** It works, it has gesture recognition, but it's larger, instance-managed, and predates Pointer Events. Don't introduce it to new projects.
+
+See `references/mobile-touch.md` for patterns.
+
+---
+
+## Modern reset
+
+Don't ship without one. Options:
+
+- **Josh Comeau's reset** - opinionated, well-explained
+- **Andy Bell's modern reset** - minimal, opinionated about defaults
+- Hand-rolled - fine if you understand each rule
+
+Tailwind v4 includes Preflight (its own reset). Don't double-stack resets.
+
+---
+
+## Build verification before shipping
+
+Before declaring a build done:
+
+```bash
+# Astro
+bun run astro check
+bun run build
+
+# SvelteKit
+bun run check
+bun run build
+
+# Next.js (next lint was removed in Next 16; run ESLint or Biome directly)
+bunx eslint .
+bun run build
+
+# Vite
+bun run build
+```
+
+If the build fails, ship the fix, not the failure. AI builds love to ship code that "should work".
+
+---
+
+## Compatibility and selection cautions
+
+- **Create React App** - deprecated, replaced by Vite + React or Next
+- **Gatsby** - Astro replaced its niche; not actively recommended
+- **Vue 2** - end-of-life since December 2023
+- **Angular** - consider team experience, existing components, and application requirements
+- **jQuery** - rarely justified in a new project; legacy maintenance only
+- **Bootstrap** - retain or select it when its components and conventions fit the requirements
+- **Material UI as default** - use it when the brand explicitly wants Material; not as a default
+- **shadcn/ui copy-paste components used as default brand** - they're a good starting kit, but if you copy them unmodified you ship the shadcn aesthetic, which is the AI-default aesthetic

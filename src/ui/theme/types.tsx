@@ -5,7 +5,7 @@ export interface GameTheme {
   density: "compact" | "comfortable" | "theatrical";
   tokens: {
     color: { paper: string; surface: string; ink: string; muted: string; line: string; onAccent: string;
-      danger: string; human: string; shadow: string; ai: string };
+      danger: string; human: string; shadow: string; ai: string; table: string; chat: string };
     font: { body: string; display: string; numeric: string };
     radius: { control: string; panel: string };
     motion: { fast: string; normal: string };
@@ -23,6 +23,7 @@ export function themeVariables(theme: GameTheme): ThemeVariables {
     "--paper": color.paper, "--surface": color.surface, "--ink": color.ink,
     "--muted": color.muted, "--line": color.line, "--on-accent": color.onAccent, "--danger": color.danger,
     "--human": color.human, "--shadow": color.shadow, "--ai": color.ai,
+    "--table": color.table, "--chat": color.chat,
     "--font-body": font.body, "--font-display": font.display, "--font-numeric": font.numeric,
     "--radius-control": radius.control, "--radius-panel": radius.panel,
     "--motion-fast": motion.fast, "--motion-normal": motion.normal,

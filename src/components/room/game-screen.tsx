@@ -4,7 +4,7 @@ import type { RoomView } from "../../contracts/public.ts";
 import type { GameSession } from "../../client/game-session.ts";
 import type { RoomSlots } from "../../ui/room-slots.ts";
 import { charCount, PLAYER_LIMITS } from "../../contracts/rules.ts";
-import { gamePresentation as copy, seatLabel } from "../../ui/presentation/game-presentation.ts";
+import { gamePresentation as copy, seatLabel, seatAlias } from "../../ui/presentation/game-presentation.ts";
 import type { GameTheme } from "../../ui/theme/types.tsx";
 
 type SeatGridStyle = CSSProperties & { "--seat-columns": number };
@@ -16,8 +16,7 @@ export function GameScreen({ session, theme, slots: overrides }: {
   const view = session.view!;
   return <main className="game-shell">
     <header className="topbar">
-      <div className="brand">{theme.assets.brandMark ? <img className="brand-artwork" src={theme.assets.brandMark} alt="" />
-        : <Scale size={23} strokeWidth={1.7} />}<strong>{copy.brand.name}</strong><span>/ {session.roomId}</span></div>
+      <div className="brand"><span className="brand-symbol" aria-hidden="true">◒</span><strong>{copy.brand.name}</strong><span>/ {session.roomId}</span></div>
       <div className="top-actions">
         <span className={`connection ${session.connected ? "online" : ""}`}><CircleDot size={13} />{session.connected ? "在线" : "重连中"}</span>
         <span className="phase-badge">{copy.phase[view.phase]}</span>
@@ -78,16 +77,20 @@ function Roundtable({ view, theme }: { view: RoomView; theme: GameTheme }) {
   const voted = new Set(view.votes.map(item => item.voterSeatId));
   const style: SeatGridStyle = { "--seat-columns": theme.seatColumns(view.seats.length) };
   return <section className="table-scene" aria-label="圆桌座位">
-    <div className="table-center"><Scale size={24} /><span>{view.phase === "answering" ? `第 ${view.round} 轮` : copy.phase[view.phase]}</span></div>
-    <div className="seat-grid" style={style}>{view.seats.map(seat => {
+    <div className="roundtable-chat" aria-label="公开发言"><strong>圆桌发言</strong>{view.log.filter(item => item.type === "answer").slice(-3).map(item => <p key={item.seq}><b>{seatAlias(item.seatId)}</b> {item.text}</p>)}</div><div className="table-center"><Scale size={24} /><span>{view.phase === "answering" ? `第 ${view.round} 轮` : copy.phase[view.phase]}</span></div>
+    <div className={`seat-grid seat-count-${view.seats.length}`} style={style}>{view.seats.map(seat => {
       const role = view.result?.roles.find(item => item.seatId === seat.seatId)?.role;
       const eliminated = view.result?.eliminatedSeatIds.includes(seat.seatId);
       const active = view.debate?.accuserSeatId === seat.seatId || view.debate?.targetSeatId === seat.seatId;
-      return <article key={seat.seatId} className={`seat ${active ? "speaking" : ""} ${eliminated ? "eliminated" : ""}`}>
-        <span>{seat.displayNumber}</span><strong>{seatLabel(seat.seatId)}</strong><small>{view.phase === "revealed"
+      const isSelf = seat.seatId === view.self?.seatId;
+      const status = eliminated ? "已完成 · 出局" : active ? "当前行动者" : view.phase === "answering" && !answered.has(seat.seatId) ? "等待发言" : "在席";
+      const latestAnswer = view.log.filter(item => item.type === "answer" && item.seatId === seat.seatId).at(-1);
+      return <article key={seat.seatId} className={`seat ${active ? "speaking" : ""} ${eliminated ? "eliminated" : ""} ${isSelf ? "current-user" : ""}`}>
+        {latestAnswer && <div className="seat-chat">{latestAnswer.text}</div>}
+        <div className={`seat-avatar ${isSelf ? "self" : ""}`}><img src={`/avatars/image${((seat.displayNumber - 1) % 8) + 1}.png`} alt="" /><span>{seat.displayNumber}</span></div><strong>{seatAlias(seat.seatId)}{isSelf && <em className="self-badge">你</em>}</strong><small>{view.phase === "revealed"
           ? `${role ? copy.role[role] : "未知"}${eliminated ? " · 出局" : " · 存活"}`
           : view.phase === "answering" ? (answered.has(seat.seatId) ? "已发言" : "思考中")
-          : view.phase === "voting" ? (voted.has(seat.seatId) ? "已投票" : "观察中") : active ? "辩论中" : "在席"}</small>
+          : view.phase === "voting" ? (voted.has(seat.seatId) ? "已投票" : "观察中") : status}</small>
       </article>;
     })}</div>
   </section>;
