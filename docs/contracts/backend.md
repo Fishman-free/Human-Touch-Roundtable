@@ -48,6 +48,8 @@ AI失败不提前广播错误或默认来源，最终由阶段截止补默认回
 
 ## 会话语义
 
+知乎登录Cookie用于公共匹配鉴权，与负责游戏座位恢复的房间Token独立。OAuth身份不进入GameState或RoomView。HTTP接口、内存生命周期和Origin约束见[知乎登录与公共匹配](../operations/zhihu-login-matchmaking.md)。公共候场清理在房间队列内检查阶段，避免与准备开局并发冲突。
+
 requestId须为随机UUID，相当于两分钟内的临时入场恢复凭据；泄露它在窗口内仍有风险，不能记录到公共日志。长期重连使用sessionToken。稳定HMAC密钥负责确定性入场派生；摘要验证本身使用存储值，因此密钥轮换不会自动撤销已有Token，撤销需要显式删/禁用会话记录。
 
 重连接管在sync后同步替换活动连接，防止两个并发恢复保留双写连接。已经被服务器接收并进入房间队列的旧连接命令可能完成；接管后收到的新命令由新连接发起。公开创建/加入请求只携带随机`requestId`，不携带phaseToken，也不进入游戏命令Outbox；AdmissionService内部用于占座的join命令固定使用候场phaseToken=0，使同一requestId跨阶段重试保持相同指纹。

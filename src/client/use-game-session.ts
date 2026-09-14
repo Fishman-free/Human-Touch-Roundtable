@@ -5,6 +5,7 @@ import { io, type Socket } from "socket.io-client";
 import type { RoomView, ClientToServerEvents, ServerToClientEvents, SocketCommandAck } from "../contracts/public.ts";
 import type { GameSession } from "./game-session.ts";
 import { CommandOutbox, type CommandSubmission, type OutboxTransport } from "./command-outbox.ts";
+import { useMatchmaking } from "./use-matchmaking.ts";
 
 type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 export type JoinMode = "player" | "spectator";
@@ -32,6 +33,19 @@ export function useGameSession(): GameSession {
   const [mode, setMode] = useState<JoinMode>("player");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const entering = useRef(false);
+  const matchmaking = useMatchmaking(!!view || busy || !connected, (matchedRoomId, sessionToken) => {
+    const socket = socketRef.current;
+    if (!socket?.connected || entering.current) return;
+    entering.current = true; setBusy(true); setError("");
+    sessionStorage.setItem(storageKey, JSON.stringify({ roomId: matchedRoomId, sessionToken }));
+    socket.timeout(10_000).emit("room:resume", { roomId: matchedRoomId, sessionToken }, (timeout, result) => {
+      entering.current = false; setBusy(false);
+      if (timeout) { setError("入席确认超时，正在等待重连，请勿重复提交"); return; }
+      if (!result.ok) { setError(errorText[result.error] ?? result.error); return; }
+      setMode("player"); setRoomId(result.roomId); setView(result.view);
+    });
+  });
 
   useEffect(() => {
     // Browsers omit Origin on same-origin GET polling handshakes, which the production origin check rejects;
@@ -55,14 +69,17 @@ export function useGameSession(): GameSession {
       setConnected(true);
       const stored = sessionStorage.getItem(storageKey);
       if (!stored) { outbox.clear(); setBusy(false); return; }
+      entering.current = true; setBusy(true);
       try {
         const session = JSON.parse(stored) as { roomId: string; sessionToken: string };
-        socket.emit("room:resume", session, result => {
-          if (result.ok) { setRoomId(result.roomId); setView(result.view); outbox.resume(transport); }
+        socket.timeout(10_000).emit("room:resume", session, (timeout, result) => {
+          entering.current = false;
+          if (timeout) { setBusy(false); setError("恢复房间超时，请刷新重试"); return; }
+          if (result.ok) { setRoomId(result.roomId); setView(result.view); setBusy(outbox.hasPending()); outbox.resume(transport); }
           else { sessionStorage.removeItem(storageKey); outbox.clear(); setView(undefined); setBusy(false);
             setError(errorText[result.error] ?? result.error); }
         });
-      } catch { sessionStorage.removeItem(storageKey); outbox.clear(); setBusy(false); }
+      } catch { entering.current = false; sessionStorage.removeItem(storageKey); outbox.clear(); setBusy(false); }
     });
     socket.on("disconnect", () => { setConnected(false); outbox.pause(); setBusy(outbox.hasPending()); });
     socket.on("room:state", setView);
@@ -81,14 +98,16 @@ export function useGameSession(): GameSession {
   }, []);
 
   function enter(event: "room:create" | "room:join") {
+    if (entering.current || busy || matchmaking.waiting || matchmaking.busy) return;
     const socket = socketRef.current;
     const normalized = roomId.trim().toLowerCase();
     if (!socket || !connected || !/^[a-z0-9-]{1,24}$/.test(normalized)) {
       setError("房间号只能使用小写字母、数字和连字符"); return;
     }
-    setBusy(true); setError("");
-    socket.emit(event, { requestId: crypto.randomUUID(), roomId: normalized, mode }, result => {
-      setBusy(false);
+    entering.current = true; setBusy(true); setError("");
+    socket.timeout(10_000).emit(event, { requestId: crypto.randomUUID(), roomId: normalized, mode }, (timeout, result) => {
+      entering.current = false; setBusy(false);
+      if (timeout) { setError("入席确认超时，请检查网络后重试"); return; }
       if (!result.ok) { setError(errorText[result.error] ?? result.error); return; }
       sessionStorage.setItem(storageKey, JSON.stringify({ roomId: result.roomId, sessionToken: result.sessionToken }));
       setRoomId(result.roomId); setView(result.view);
@@ -120,6 +139,7 @@ export function useGameSession(): GameSession {
   }
 
   return {
+    matchmaking,
     connected, view, roomId, setRoomId, mode, setMode, busy, error,
     create: () => enter("room:create"), join: () => enter("room:join"), leave,
     ready: (ready: boolean) => emit({ event: "room:ready", input: { ...base(), ready } }),

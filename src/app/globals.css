@@ -49,6 +49,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--human); box-shad
 .entry-status { display: flex; align-items: center; gap: 7px; margin-top: 20px; color: var(--muted); font-size: 13px; }
 .entry-status.online svg, .connection.online svg { color: var(--human); fill: var(--human); }
 .form-error { color: var(--danger); font-size: 14px; }
+.matchmaking-panel { padding: 0 0 22px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
+.matchmaking-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.matchmaking-panel p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.matchmaking-login { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 20px; border-radius: var(--radius-control); background: var(--human); color: var(--on-accent); text-decoration: none; font-weight: 700; }
+.matchmaking-login:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 
 .game-shell { width: min(100% - 32px, var(--content-width)); margin: 0 auto; padding-bottom: 72px; }
 .topbar { position: sticky; z-index: 20; top: 0; display: flex; min-height: 62px; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--ink); background: color-mix(in srgb, var(--paper) 94%, transparent); backdrop-filter: blur(12px); }

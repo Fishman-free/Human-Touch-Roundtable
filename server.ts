@@ -11,8 +11,11 @@ import { handleOperationalRequest } from "./src/server/health.ts";
 import { parseOrigins, socketTransportOptions } from "./src/server/socket-security.ts";
 import { OperationalMonitor } from "./src/observability/monitor.ts";
 import { handleAdminRequest } from "./src/server/admin.ts";
+import { oauthConfig, ZhihuOAuth } from "./src/server/zhihu-oauth.ts";
+import { handleAccountRequest } from "./src/server/account-http.ts";
 
 const development = process.env.NODE_ENV !== "production";
+const oauth = new ZhihuOAuth(oauthConfig(process.env));
 const port = Number(process.env.PORT ?? 3000);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("INVALID_PORT");
 
@@ -38,6 +41,7 @@ if (metricsToken !== undefined && Buffer.byteLength(metricsToken) < 24) throw ne
 if (adminToken !== undefined && Buffer.byteLength(adminToken) < 32) throw new Error("ADMIN_TOKEN must contain at least 32 bytes");
 const http = createServer((request, response) => {
   void (async () => {
+    if (await handleAccountRequest(request, response, oauth, context.matchmaking, trustedProxyHops)) return;
     if (await handleAdminRequest(request, response, adminToken, context, event => monitor.lifecycle("admin.audit", event as unknown as Record<string, unknown>))) return;
     if (await handleOperationalRequest(request, response, {
       ready: () => ready && context.check(), metrics: () => monitor.metrics.render(), metricsToken,
@@ -72,6 +76,7 @@ async function shutdown() {
   if (stopping) return;
   stopping = true;
   ready = false;
+  oauth.clear();
   monitor.lifecycle("server.stopping");
   await new Promise<void>(resolveClose => io.close(() => resolveClose()));
   await context.close();

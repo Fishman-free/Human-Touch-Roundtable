@@ -1,8 +1,10 @@
 import type { JoinMode, RoomView } from "../contracts/public.ts";
+import type { MatchmakingControls } from "./use-matchmaking.ts";
 
 // Stable presentation boundary: collaborators can provide a fixture implementation
 // without starting Socket.IO, SQLite or a model provider.
 export interface GameSession {
+  matchmaking?: MatchmakingControls;
   connected: boolean;
   view?: RoomView;
   roomId: string;

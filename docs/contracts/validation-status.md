@@ -13,6 +13,8 @@
 
 ## 当前状态
 
+知乎OAuth与公共匹配已增加实现及模拟供应商测试，目标回调为`https://airoundtable.stream/api/auth/zhihu/callback`；App ID/App Key待配置，真实授权与跨设备匹配仍待验收。配置和限制见[知乎登录与公共匹配](../operations/zhihu-login-matchmaking.md)。
+
 | 能力 | 当前证据 | 明确未证明 |
 |---|---|---|
 | 游戏核心、身份、投票、结算 | 自动验证 | 真实多人长期平衡性 |
