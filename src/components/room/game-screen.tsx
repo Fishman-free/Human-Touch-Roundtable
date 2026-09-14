@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { ArrowRight, Bot, Check, CircleDot, Clock3, Eye, LogOut, MessageSquare, Scale, Send, Swords, Users, Vote } from "lucide-react";
+import { ArrowRight, Bot, Check, CircleDot, Clock3, Eye, LogOut, MessageSquare, RotateCcw, Scale, Send, Swords, Users, Vote } from "lucide-react";
 import type { RoomView } from "../../contracts/public.ts";
 import type { GameSession } from "../../client/game-session.ts";
 import type { RoomSlots } from "../../ui/room-slots.ts";
@@ -58,7 +58,7 @@ function Game({ view, session, theme, slots }: { view: RoomView; session: GameSe
     {view.phase === "debating" && <slots.Debate view={view} busy={session.busy} accuse={session.accuse}
       respond={session.respond} followup={session.followup} skip={session.skipFollowup} />}
     {view.phase === "voting" && <slots.Voting view={view} busy={session.busy} vote={session.castVote} />}
-    {view.phase === "revealed" && <slots.Reveal view={view} theme={theme} />}
+    {view.phase === "revealed" && <slots.Reveal view={view} theme={theme} session={session} />}
   </>;
 }
 
@@ -172,9 +172,17 @@ function VotingStage({ view, busy, vote }: { view: RoomView; busy: boolean; vote
   </section>;
 }
 
-function RevealStage({ view, theme }: { view: RoomView; theme: GameTheme }) {
+function RevealStage({ view, theme, session }: { view: RoomView; theme: GameTheme; session: GameSession }) {
   const result = view.result!;
   return <section className="reveal-band"><div className={`verdict ${result.winner}`}><span>本局裁决</span><h2>{copy.winner[result.winner]}</h2></div>
+    <div className="rematch-band">
+      {session.canRematch
+        ? <><button className="primary large" disabled={session.busy} onClick={session.rematch}><RotateCcw size={18} />再来一局</button>
+          <button className="secondary large" disabled={session.busy} onClick={session.leave}>回到大厅</button>
+          <p>回到匹配队列，和新的对手再开一局。</p></>
+        : <><button className="primary large" onClick={session.leave}><ArrowRight size={18} />回到大厅</button>
+          <p>用知乎账号登录后，这里可以直接一键重新匹配。</p></>}
+    </div>
     {theme.assets.revealArtwork && <img className="reveal-artwork" src={theme.assets.revealArtwork} alt="" />}
     <div className="identity-list">{view.seats.map(seat => { const role = result.roles.find(item => item.seatId === seat.seatId)!.role;
       return <article key={seat.seatId}><div className={`role-icon ${role}`}>{role === "ai" ? <Bot /> : role === "shadow" ? <Eye /> : <Users />}</div>

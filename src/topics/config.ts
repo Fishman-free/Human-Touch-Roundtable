@@ -10,9 +10,20 @@ import { PersistentTopicCache } from "./persistent-topic-cache.ts";
 import { RecommendedTopicProvider } from "./recommended-topic-provider.ts";
 import { UnionTopicProvider } from "./union-topic-provider.ts";
 import { candidatesFrom, isFresh, loadSeed, saveSeed, type RecommendedSeed } from "./recommended-seed.ts";
+import { RecommendedRefresher, type RecommendedRefresherOptions } from "./recommended-refresher.ts";
 import { LlmTopicContentGenerator } from "./topic-content-generator.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
+
+// The pieces the refresh loop has to share with the rooms it feeds. Rebuilding
+// any of them outside would produce a second pool that nothing ever reads, so
+// recommended mode hands the originals back through onRecommended instead of
+// widening the TopicProvider port with fields only one caller uses.
+export interface RecommendedWiring {
+  client: ZhihuContentClient;
+  provider: RecommendedTopicProvider;
+  stack: TopicProvider;
+}
 
 export interface TopicProviderOptions {
   // Supplied by openTopicProvider in recommended mode. Undefined there is a
@@ -20,6 +31,7 @@ export interface TopicProviderOptions {
   recommended?: RecommendedSeed;
   llm?: readonly LlmProvider[];
   onAlert?: (event: Record<string, unknown>) => void;
+  onRecommended?: (wiring: RecommendedWiring) => void;
 }
 
 export interface TopicBootOptions extends TopicProviderOptions {
@@ -59,12 +71,7 @@ export function createTopicProvider(environment: Readonly<Record<string, string 
     if (!seed) throw new Error("RECOMMENDED_TOPICS_REQUIRE_BOOTSTRAP");
     const client = new ZhihuContentClient({
       accessSecret: secret, minRequestIntervalMs: Number(environment.ZHIHU_MIN_REQUEST_INTERVAL_MS ?? 1_000) });
-    const providers: TopicProvider[] = [
-      new VerifiedTopicProvider(productionTopicPacks, new ZhihuSearchQuestionGateway(client)),
-    ];
-    // An empty dynamic half degrades this mode to exactly `verified`, which is
-    // what keeps the server usable when boot had neither a seed nor a network.
-    if (seed.candidates.length) providers.push(new RecommendedTopicProvider(seed, {
+    const dynamic = new RecommendedTopicProvider(seed, {
       client,
       content: new LlmTopicContentGenerator(options.llm ?? [], {
         maxTokens: Number(environment.TOPIC_AI_MAX_TOKENS ?? 2_048),
@@ -73,10 +80,18 @@ export function createTopicProvider(environment: Readonly<Record<string, string 
       answerLimit: Number(environment.ZHIHU_ANSWERS_LIMIT ?? 20),
       fallback: environment.ZHIHU_TOPIC_FALLBACK === "fail" ? "fail" : "static",
       onEvent: options.onAlert,
-    }));
-    const union = new UnionTopicProvider(providers,
-      environment.ZHIHU_TOPIC_UNION_ORDER === "dynamic-first" ? "dynamic-first" : "curated-first");
-    return persistent(union, environment);
+    });
+    // Always merged, even when the pool is empty: an empty dynamic half degrades
+    // this mode to exactly `verified`, which is what keeps the server usable when
+    // boot had neither a seed nor a network, and leaving the provider in place is
+    // what lets the refresh loop fill the pool in later.
+    const union = new UnionTopicProvider([
+      new VerifiedTopicProvider(productionTopicPacks, new ZhihuSearchQuestionGateway(client)),
+      dynamic,
+    ], environment.ZHIHU_TOPIC_UNION_ORDER === "dynamic-first" ? "dynamic-first" : "curated-first");
+    const stack = persistent(union, environment);
+    options.onRecommended?.({ client, provider: dynamic, stack });
+    return stack;
   }
   throw new Error("INVALID_TOPIC_MODE");
 }
@@ -132,4 +147,59 @@ export async function openTopicProvider(environment: Readonly<Record<string, str
   const secret = environment.ZHIHU_ACCESS_SECRET;
   if (!secret) throw new Error("ZHIHU_ACCESS_SECRET_REQUIRED");
   return createTopicProvider(environment, development, { ...options, recommended: await resolveSeed(environment, secret, options) });
+}
+
+export interface TopicSystem {
+  topics: TopicProvider;
+  // Stops the refresh loop. A no-op in the modes that have none, so callers never
+  // have to branch on TOPIC_MODE.
+  close(): Promise<void>;
+}
+
+// Rolling-pool entry point for the server. openTopicProvider stays the
+// provider-only view, for scripts and tests that have no reason to run a refresh
+// loop.
+export async function openTopicSystem(environment: Readonly<Record<string, string | undefined>>,
+  development: boolean, options: TopicBootOptions = {}): Promise<TopicSystem> {
+  let wiring: RecommendedWiring | undefined;
+  const topics = await openTopicProvider(environment, development,
+    { ...options, onRecommended: value => { wiring = value; } });
+  const refresher = wiring ? startRefresher(environment, wiring, options) : undefined;
+  return { topics, close: async () => { refresher?.close(); } };
+}
+
+function startRefresher(environment: Readonly<Record<string, string | undefined>>,
+  wiring: RecommendedWiring, options: TopicBootOptions): RecommendedRefresher | undefined {
+  // Zero is the documented off switch, which makes rolling revertible with an
+  // environment change and a force-recreate rather than a rebuild. A typo must
+  // not silently disable it, so anything else non-numeric is a hard error.
+  const configured = environment.ZHIHU_TOPIC_REFRESH_MS;
+  const intervalMs = Number(configured ?? DAY_MS);
+  if (configured !== undefined && (!Number.isSafeInteger(intervalMs) || intervalMs < 0)) {
+    throw new Error("INVALID_TOPIC_REFRESH_MS");
+  }
+  if (intervalMs === 0) return undefined;
+  const max = Number(environment.ZHIHU_TOPIC_CANDIDATE_MAX ?? 60);
+  if (!Number.isInteger(max) || max < 1) throw new Error("INVALID_TOPIC_CANDIDATE_MAX");
+
+  const count = Number(environment.ZHIHU_TOPIC_CANDIDATE_COUNT ?? 20);
+  const refresher: RecommendedRefresherOptions = {
+    client: wiring.client, provider: wiring.provider, stack: wiring.stack,
+    query: environment.ZHIHU_TOPIC_CANDIDATE_QUERY ?? "生活方式",
+    queries: (environment.ZHIHU_TOPIC_CANDIDATE_QUERIES ?? "").split(",")
+      .map(value => value.trim()).filter(Boolean),
+    count: Number.isInteger(count) && count >= 1 && count <= 20 ? count : 20,
+    max, intervalMs,
+    seedPath: environment.ZHIHU_TOPIC_CANDIDATE_PATH,
+    // Only an explicit "false" turns warming off; every other value leaves it on,
+    // because a cold candidate costs the first room that draws it a model call.
+    warmNew: environment.ZHIHU_TOPIC_REFRESH_WARM !== "false",
+    requestTimeoutMs: Number(environment.ZHIHU_TOPIC_CANDIDATE_TIMEOUT_MS ?? 3_000),
+    warmTimeoutMs: Number(environment.TOPIC_TIMEOUT_MS ?? 20_000),
+    now: options.now,
+    onEvent: options.onAlert,
+  };
+  const started = new RecommendedRefresher(refresher);
+  started.start();
+  return started;
 }

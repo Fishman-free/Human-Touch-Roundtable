@@ -38,12 +38,13 @@
 - `VerifiedTopicProvider`：把核验结果绑定到人工题目包，写入verifiedAt、选中回答URL及赞同数，并用接口回答片段替换题目包备用片段。
 - `CachedTopicProvider`：可包装任意TopicProvider，按候选和TTL缓存成功结果，返回深拷贝；进程重启后缓存消失。
 - `PersistentTopicCache`：设置`ZHIHU_TOPIC_CACHE_PATH`时替代上者（生产compose默认写入数据卷），把成功结果连同核验时间、TTL和失败分类落盘，容器重建后仍然有效；失败记录不粘滞，下次仍会重试。
-- `RecommendedTopicProvider`：`TOPIC_MODE=recommended`时新增，候选来自平台问题推荐，回答摘要来自`question_answers`；`topConsensusSummary`与`defaults`由模型生成，失败时退回确定性文案。
-- `UnionTopicProvider`：把人工片单和动态候选合并成单一候选列表，人工题固定在前，保证已持久化的`candidateIndex`在模式切换后仍指向同一道题。
+- `RecommendedTopicProvider`：`TOPIC_MODE=recommended`时新增，候选来自平台问题推荐，回答摘要来自`question_answers`；`topConsensusSummary`与`defaults`由模型生成，失败时退回确定性文案。候选列表是实时视图，可被刷新器追加和淘汰。
+- `RecommendedRefresher`：`TOPIC_MODE=recommended`时随服务器启动，按`ZHIHU_TOPIC_REFRESH_MS`周期拉新候选、追加未见的、淘汰最旧的、刷新启动快照并预热新题；不重排已有候选，失败时不动候选池。
+- `UnionTopicProvider`：把人工片单和动态候选合并成单一候选列表，人工题固定在前，保证已持久化的`candidateIndex`在模式切换后仍指向同一道题。候选列表从各提供器实时读取，不做事先快照。
 
 当前使用官方接口：`GET /api/v1/content/hot_list`、`GET /api/v1/content/zhihu_search`、`GET /api/v1/content/question_answers`与`GET /api/v1/user/question_recommendations`，均使用Bearer Access Secret和秒级`X-Request-Timestamp`。禁止抓取网页冒充官方接口。
 
-`createTopicProvider`负责环境门禁：开发默认static；生产默认verified并要求`ZHIHU_ACCESS_SECRET`。成功结果默认缓存7天，可用`ZHIHU_TOPIC_CACHE_MS`调整；设置`ZHIHU_TOPIC_CACHE_PATH`时使用持久化缓存，未设置则退回进程内缓存并在进程重启后消失；同候选并发请求会合并。static只有同时设置`ALLOW_STATIC_TOPICS_IN_PRODUCTION=true`才可用于基础设施冒烟，不能用于公开游戏。`recommended`在`verified`之上叠加动态候选；回滚只需把它改回`verified`并重建容器，不需要重新构建镜像。
+`createTopicProvider`负责环境门禁：开发默认static；生产默认verified并要求`ZHIHU_ACCESS_SECRET`。成功结果默认缓存7天，可用`ZHIHU_TOPIC_CACHE_MS`调整；设置`ZHIHU_TOPIC_CACHE_PATH`时使用持久化缓存，未设置则退回进程内缓存并在进程重启后消失；同候选并发请求会合并。static只有同时设置`ALLOW_STATIC_TOPICS_IN_PRODUCTION=true`才可用于基础设施冒烟，不能用于公开游戏。`recommended`在`verified`之上叠加动态候选；回滚只需把它改回`verified`并重建容器，不需要重新构建镜像。`openTopicSystem`是供服务器使用的入口，在`openTopicProvider`之上额外返回`close()`以停止刷新循环；`scripts/`下的预热与核验脚本仍用只返回提供器的`openTopicProvider`。
 
 ## 排序与覆盖限制
 
@@ -67,6 +68,21 @@
 - **生成字段**：`topConsensusSummary`与`defaults`由模型按`roundtable-topic-v1`提示词生成，并强制经过本地规范化与长度校验（与核心`validateTopic`同一套规则）；不通过则回落到确定性文案。`ZHIHU_TOPIC_FALLBACK=fail`可改为直接让该候选失败。
 - **来源标识**：动态题的`provenance.packId`形如`zhihu-q<问题ID>`，与人工片单的`zhihu-2026-09-…`可直接区分。
 - **额度**：一份候选快照消耗一次`creator`额度，一道冷启动动态题消耗一次`question_answers`额度，之后由持久化缓存摊到整个TTL周期内。
+
+### 题库滚动
+
+`ZHIHU_TOPIC_REFRESH_MS`不为0时（生产默认一天），应用每隔该时长执行一轮刷新，让候选池持续变化，而不是只在启动那一刻固定下来。每轮按**先拉取、再追加、后淘汰、最后落盘与预热**的顺序做四件事：
+
+1. **拉取**：调`question_recommendations`取一批（数量同`ZHIHU_TOPIC_CANDIDATE_COUNT`），沿用启动时的同一套内容策略过滤。主题按`ZHIHU_TOPIC_CANDIDATE_QUERIES`（逗号分隔）**每轮轮换一个**——平台对同一主题的推荐列表是稳定的，固定用「生活方式」问下去很可能每天返回同一批候选，追加恒为0，滚动就名存实亡。留空则退化为只用`ZHIHU_TOPIC_CANDIDATE_QUERY`。
+2. **追加**：只追加池子里还没有的`zhihu-q<问题ID>`。已有候选保持原有下标，因此在跑的房间即便已经持久化了`candidateIndex`，仍然指向同一道题。
+3. **淘汰**：池子超过`ZHIHU_TOPIC_CANDIDATE_MAX`（默认60）时，从**最旧的动态题**开始丢弃，直到回到上限。人工片单不在被淘汰之列。淘汰是唯一会移动下标的操作，移动的是所有存活于被丢弃项之后的候选；若某个房间恰好在「建房→出题」这个几秒的窗口内跨越了淘汰，它会改判到另一道**同样合法**的题目，而不是卡死。这是一天一次、窗口几秒的取舍，未额外加锁。
+4. **落盘与预热**：把当前池子写回`ZHIHU_TOPIC_CANDIDATE_PATH`并刷新`fetchedAt`，再串行预热本轮新增的候选（每道消耗一次`question_answers`额度与一次模型调用），使第一个抽到它的房间不必付冷启动延迟。预热必须走完整提供器栈，否则生成的题目不会进入房间实际读取的持久化缓存。`ZHIHU_TOPIC_REFRESH_WARM=false`可关闭预热，只保留换题。
+
+刷新失败（网络、额度、模型）只记录`topic.refresh.failed`并保留原候选池，**不影响正在进行的对局**；连续失败会让下一轮的间隔按倍数退避，上限8倍，成功一次即恢复，因此不需要重启。运维事件：`topic.refresh.ok`、`topic.refresh.empty`、`topic.refresh.failed`、`topic.refresh.warm_failed`。
+
+`ZHIHU_TOPIC_REFRESH_MS=0`完全不启动刷新循环，是这条特性的免重建回滚开关；关闭后候选池行为与滚动引入前完全一致。
+
+滚动的效果是**候选池**在换，不是「每局换一批」：单局抽到的题仍由`candidateIndex`和持久化缓存固定，重启或重连不会换题。因此有了滚动之后，`npm run warm:topics`只需在首次上线或清空缓存后跑一次，日常由刷新器接管。
 
 手动在线核验使用：
 

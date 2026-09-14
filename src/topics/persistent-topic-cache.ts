@@ -20,7 +20,6 @@ function classify(error: unknown) {
 
 export interface TopicCacheAlert { candidateId: string; reason: string; at: string }
 export class PersistentTopicCache implements TopicProvider {
-  readonly candidateIds: readonly string[];
   private records = new Map<string, TopicVerificationRecord>();
   private inFlight = new Map<string, Promise<Topic>>();
   private loaded = false;
@@ -29,9 +28,11 @@ export class PersistentTopicCache implements TopicProvider {
   constructor(source: TopicProvider, path: string, ttlMs: number, now = Date.now, alert?: (event: TopicCacheAlert) => void) {
     this.source = source; this.path = path; this.ttlMs = ttlMs; this.now = now;
     if (!Number.isSafeInteger(ttlMs) || ttlMs <= 0) throw new Error("INVALID_TOPIC_CACHE_TTL");
-    this.candidateIds = source.candidateIds;
     this.alert = alert;
   }
+  // Read through rather than snapshotted: the refresh loop appends candidates to
+  // the wrapped provider while rooms are being served.
+  get candidateIds(): readonly string[] { return this.source.candidateIds; }
   private async load() { if (this.loaded) return; this.loaded = true; try { const data = JSON.parse(await readFile(this.path, "utf8")) as Record<string, TopicVerificationRecord>; for (const [id, record] of Object.entries(data)) this.records.set(id, record); } catch { /* first run */ } }
   private async save() { await mkdir(dirname(this.path), { recursive: true }); await writeFile(this.path, JSON.stringify(Object.fromEntries(this.records), null, 2), { mode: 0o600 }); }
   private async lock() { const lock = `${this.path}.lock`; for (let attempt = 0; attempt < 30; attempt++) { try { await mkdir(lock); return async () => { await rm(lock, { recursive: true, force: true }); }; } catch { await new Promise(resolve => setTimeout(resolve, 100)); } } throw new Error("TOPIC_CACHE_LOCK_TIMEOUT"); }

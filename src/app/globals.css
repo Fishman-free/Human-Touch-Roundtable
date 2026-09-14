@@ -364,3 +364,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--human); box-shad
 .seat-count-5 .seat:nth-child(1){left:50%;top:20px}.seat-count-5 .seat:nth-child(2){right:7%;top:130px}.seat-count-5 .seat:nth-child(3){right:18%;bottom:20px}.seat-count-5 .seat:nth-child(4){left:18%;bottom:20px}.seat-count-5 .seat:nth-child(5){left:7%;top:130px}
 .seat-count-6 .seat:nth-child(1){left:50%;top:10px}.seat-count-6 .seat:nth-child(2){right:5%;top:105px}.seat-count-6 .seat:nth-child(3){right:10%;bottom:30px}.seat-count-6 .seat:nth-child(4){left:50%;bottom:0}.seat-count-6 .seat:nth-child(5){left:10%;bottom:30px}.seat-count-6 .seat:nth-child(6){left:5%;top:105px}
 @media(max-width:760px){.table-center{transform:translate(-50%,calc(-50% + 64px))}.seat-grid{max-width:520px}.seat-count-3 .seat:nth-child(1){top:60px}.seat-count-3 .seat:nth-child(2){right:2%;top:270px}.seat-count-3 .seat:nth-child(3){left:2%;top:270px}}
+
+/* Exit actions for a finished game: before this the reveal screen was a dead end
+   and the only way out was the topbar. */
+.rematch-band { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 24px; padding: 0 0 22px; border-bottom: 1px solid var(--line); }
+.rematch-band p { flex: 1 1 220px; margin: 0; color: var(--muted); font-size: 13px; }
+@media (max-width: 760px) { .rematch-band { flex-direction: column; align-items: stretch; } .rematch-band p { text-align: center; } }

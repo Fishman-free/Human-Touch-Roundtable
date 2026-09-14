@@ -34,7 +34,11 @@ export function useGameSession(): GameSession {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const entering = useRef(false);
-  const matchmaking = useMatchmaking(!!view || busy || !connected, (matchedRoomId, sessionToken) => {
+  const rematchPending = useRef(false);
+  // Matches what the matchmaking hook is told, so the rematch effect can wait for
+  // exactly the moment its request guard will accept a join.
+  const suspended = !!view || busy || !connected;
+  const matchmaking = useMatchmaking(suspended, (matchedRoomId, sessionToken) => {
     const socket = socketRef.current;
     if (!socket?.connected || entering.current) return;
     entering.current = true; setBusy(true); setError("");
@@ -46,6 +50,8 @@ export function useGameSession(): GameSession {
       setMode("player"); setRoomId(result.roomId); setView(result.view);
     });
   });
+  const rematchJoin = useRef(matchmaking.join);
+  rematchJoin.current = matchmaking.join;
 
   useEffect(() => {
     // Browsers omit Origin on same-origin GET polling handshakes, which the production origin check rejects;
@@ -97,8 +103,19 @@ export function useGameSession(): GameSession {
     return () => { outbox.pause(); socket.disconnect(); socketRef.current = null; outboxRef.current = null; };
   }, []);
 
+  // leave() disconnects the socket, so the session is suspended for a beat and a
+  // join request fired during that beat is dropped by the hook's own guard. The
+  // request is held here instead and released the moment the guard will accept it.
+  useEffect(() => {
+    if (suspended || !rematchPending.current) return;
+    rematchPending.current = false;
+    rematchJoin.current();
+  }, [suspended]);
+
   function enter(event: "room:create" | "room:join") {
     if (entering.current || busy || matchmaking.waiting || matchmaking.busy) return;
+    // Deliberate navigation wins over a rematch that is still waiting to fire.
+    rematchPending.current = false;
     const socket = socketRef.current;
     const normalized = roomId.trim().toLowerCase();
     if (!socket || !connected || !/^[a-z0-9-]{1,24}$/.test(normalized)) {
@@ -138,10 +155,18 @@ export function useGameSession(): GameSession {
     setBusy(true); setError("");
   }
 
+  // Matchmaking needs a signed-in account before it will queue anyone; without one
+  // the reveal screen offers a plain exit instead of a button that cannot work.
+  const canRematch = Boolean(matchmaking.account?.enabled && matchmaking.account.user);
+  function rematch() {
+    rematchPending.current = canRematch;
+    leave();
+  }
+
   return {
     matchmaking,
     connected, view, roomId, setRoomId, mode, setMode, busy, error,
-    create: () => enter("room:create"), join: () => enter("room:join"), leave,
+    create: () => enter("room:create"), join: () => enter("room:join"), leave, rematch, canRematch,
     ready: (ready: boolean) => emit({ event: "room:ready", input: { ...base(), ready } }),
     answer: (text: string, stance?: "pro" | "con") => emit({ event: "game:answer",
       input: { ...base(), round: view!.round!, text, ...(stance ? { stance } : {}) } }),

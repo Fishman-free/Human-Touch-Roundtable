@@ -19,7 +19,7 @@ const MyRoundtable: RoomSlots['Roundtable'] = ({ view, theme }) => (
 <GameScreen session={session} theme={theme} slots={{ Roundtable: MyRoundtable }} />
 ```
 
-`slots`支持Lobby、Preparing、StageRail、Roundtable、Answer、Debate、Voting、Reveal。具体props以`src/ui/room-slots.ts`为准。自定义组件建议用CSS Modules，避免影响默认组件的全局类名。
+`slots`支持Lobby、Preparing、StageRail、Roundtable、Answer、Debate、Voting、Reveal。具体props以`src/ui/room-slots.ts`为准。自定义组件建议用CSS Modules，避免影响默认组件的全局类名。`Reveal`额外接收`session`，因为对局结束后的离场动作（`rematch()`、`leave()`）落在这一屏；替换Reveal实现时需要自行保留出口，否则玩家只能靠顶栏离开。
 
 ## 主题字段
 

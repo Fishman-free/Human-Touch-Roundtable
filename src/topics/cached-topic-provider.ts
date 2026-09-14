@@ -2,7 +2,6 @@ import type { TopicProvider } from "../application/ports.ts";
 import type { Topic } from "../game/model.ts";
 
 export class CachedTopicProvider implements TopicProvider {
-  readonly candidateIds: readonly string[];
   private source: TopicProvider;
   private ttlMs: number;
   private now: () => number;
@@ -12,10 +11,13 @@ export class CachedTopicProvider implements TopicProvider {
   constructor(source: TopicProvider, ttlMs: number, now: () => number = Date.now) {
     if (!Number.isSafeInteger(ttlMs) || ttlMs <= 0) throw new Error("INVALID_TOPIC_CACHE_TTL");
     this.source = source;
-    this.candidateIds = source.candidateIds;
     this.ttlMs = ttlMs;
     this.now = now;
   }
+
+  // Read through rather than snapshotted: the refresh loop appends candidates to
+  // the wrapped provider while rooms are being served.
+  get candidateIds(): readonly string[] { return this.source.candidateIds; }
 
   async resolve(candidateId: string, signal: AbortSignal): Promise<Topic> {
     if (signal.aborted) throw new Error("ABORTED");

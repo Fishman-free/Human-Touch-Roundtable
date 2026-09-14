@@ -12,9 +12,11 @@ import { ZhihuContentClient } from "../src/topics/zhihu-content-client.ts";
 import { PersistentTopicCache } from "../src/topics/persistent-topic-cache.ts";
 import { productionTopicPacks } from "../src/topics/static-topic-provider.ts";
 import { UnionTopicProvider } from "../src/topics/union-topic-provider.ts";
-import { candidatesFrom, saveSeed, type RecommendedSeed } from "../src/topics/recommended-seed.ts";
+import { candidatesFrom, loadSeed, saveSeed, type RecommendedSeed } from "../src/topics/recommended-seed.ts";
 import { candidateIdFor, RecommendedTopicProvider } from "../src/topics/recommended-topic-provider.ts";
-import { createTopicProvider, openTopicProvider } from "../src/topics/config.ts";
+import { RecommendedRefresher } from "../src/topics/recommended-refresher.ts";
+import { CachedTopicProvider } from "../src/topics/cached-topic-provider.ts";
+import { createTopicProvider, openTopicProvider, openTopicSystem } from "../src/topics/config.ts";
 import { fallbackTopicContent, LlmTopicContentGenerator,
   type TopicContent, type TopicContentGenerator, type TopicContentInput } from "../src/topics/topic-content-generator.ts";
 
@@ -308,4 +310,188 @@ test("额度耗尽被归类为配额问题并触发告警", async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+function topicFixture(id: string): Topic {
+  return { id, title: "题目", url: `https://www.zhihu.com/question/${id}`, topAnswerExcerpt: "摘要",
+    topConsensusSummary: "共识",
+    defaults: { 1: ["一", "二"], 2: ["正方：甲", "反方：乙"], 3: ["三", "四"] },
+    provenance: { packId: `zhihu-q${id}`, source: "zhihu", curatedAt: "2026-09-14T00:00:00.000Z" } };
+}
+
+function curatedProvider(ids: readonly string[]): TopicProvider {
+  return { candidateIds: ids, async resolve() { return topicFixture("1"); } };
+}
+
+function candidateFor(questionId: string): { questionId: string; title: string; url: string } {
+  return { questionId, title: `问题${questionId}`, url: `https://www.zhihu.com/question/${questionId}` };
+}
+
+// The whole point of the rolling pool. RoomRuntime indexes candidateIds modulo
+// its length, so a candidate appended at runtime must leave every existing index
+// pointing at the same topic -- including through every wrapper in the stack,
+// each of which used to snapshot the list in its constructor.
+test("运行时追加的候选对完整封装栈立即可见，且已有下标含义不变", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "roundtable-append-"));
+  try {
+    const curated = curatedProvider(["zhihu-2026-09-11-a", "zhihu-2026-09-11-b"]);
+    const dynamic = providerWith();
+    const union = new UnionTopicProvider([curated, dynamic]);
+    const stacks: TopicProvider[] = [
+      new CachedTopicProvider(union, 60_000),
+      new PersistentTopicCache(union, join(directory, "topic-cache.json"), 60_000),
+    ];
+
+    // Both wrappers see the pre-append pool, then both must see the append.
+    const before = [...union.candidateIds];
+    assert.deepEqual(before, ["zhihu-2026-09-11-a", "zhihu-2026-09-11-b", "zhihu-q123"]);
+    for (const stack of stacks) assert.deepEqual([...stack.candidateIds], before);
+
+    assert.deepEqual(dynamic.append([candidateFor("999")]), ["zhihu-q999"]);
+    for (const stack of stacks) {
+      assert.deepEqual([...stack.candidateIds], [...before, "zhihu-q999"]);
+      for (const [index, id] of before.entries()) assert.equal(stack.candidateIds[index], id);
+      // Listed is not enough: an appended candidate has to be resolvable through
+      // the same stack the rooms use, or the pool would only look bigger.
+      assert.equal((await stack.resolve("zhihu-q999", new AbortController().signal)).id, "999");
+    }
+
+    // statuses() reports the live pool, so a freshly appended candidate shows up
+    // as pending rather than being invisible until the next restart.
+    const cache = stacks[1] as PersistentTopicCache;
+    assert.deepEqual((await cache.statuses()).map(status => status.packId),
+      ["zhihu-2026-09-11-a", "zhihu-2026-09-11-b", "zhihu-q123", "zhihu-q999"]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("池子超过上限时按插入顺序淘汰最旧的动态题", () => {
+  const dynamic = providerWith();
+  dynamic.append([candidateFor("201"), candidateFor("202")]);
+  assert.deepEqual(dynamic.candidateIds, ["zhihu-q123", "zhihu-q201", "zhihu-q202"]);
+
+  // A Map iterates in insertion order, so the head is the oldest.
+  assert.deepEqual(dynamic.trim(2), ["zhihu-q123"]);
+  assert.deepEqual(dynamic.candidateIds, ["zhihu-q201", "zhihu-q202"]);
+  assert.deepEqual(dynamic.snapshot().map(candidate => candidate.questionId), ["201", "202"]);
+  // Already within the cap: nothing to do, and no candidate loses its index.
+  assert.deepEqual(dynamic.trim(5), []);
+  assert.deepEqual(dynamic.candidateIds, ["zhihu-q201", "zhihu-q202"]);
+  // The curated half lives in another delegate, so emptying this one cannot take
+  // the game down; the union still has candidates.
+  assert.deepEqual(dynamic.trim(1), ["zhihu-q201"]);
+  assert.deepEqual(dynamic.candidateIds, ["zhihu-q202"]);
+});
+
+test("滚动刷新追加新题、淘汰最旧、更新快照并预热新题", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "roundtable-refresh-"));
+  try {
+    const path = join(directory, "topic-candidates.json");
+    const dynamic = providerWith();
+    const warmed: string[] = [];
+    // Warming must run through the outer stack, not the dynamic provider, or the
+    // generated topic would never reach the cache a room reads from.
+    const stack: TopicProvider = {
+      get candidateIds() { return ["zhihu-2026-09-11-a", ...dynamic.candidateIds]; },
+      async resolve(candidateId) { warmed.push(candidateId); return topicFixture(candidateId.slice(7)); },
+    };
+    const client = new ZhihuContentClient({ accessSecret: "test-only-secret", minRequestIntervalMs: 0,
+      fetch: async () => response({ Items: [
+        // Already in the pool, so it must not be appended a second time.
+        { Title: "重复问题", Url: "https://www.zhihu.com/question/123" },
+        { Title: "新问题", Url: "https://www.zhihu.com/question/999" },
+        { Title: "不是问题", Url: "https://www.zhihu.com/answer/1" },
+      ] }) });
+    const events: Record<string, unknown>[] = [];
+    const refresher = new RecommendedRefresher({ client, provider: dynamic, stack,
+      count: 20, max: 1, intervalMs: 60_000, seedPath: path,
+      now: () => Date.parse("2026-09-15T03:00:00.000Z"), onEvent: event => events.push(event) });
+
+    // max:1 is the rolling window in miniature -- add one, drop the oldest.
+    assert.deepEqual(await refresher.runOnce(),
+      { added: ["zhihu-q999"], removed: ["zhihu-q123"], warmed: 1 });
+    assert.deepEqual(dynamic.candidateIds, ["zhihu-q999"]);
+    assert.deepEqual(warmed, ["zhihu-q999"]);
+
+    // The snapshot is what boot reads next time, so it has to match the live pool
+    // and carry the refreshed timestamp.
+    const saved = await loadSeed(path);
+    assert.deepEqual(saved?.candidates.map(candidate => candidate.questionId), ["999"]);
+    assert.equal(saved?.fetchedAt, "2026-09-15T03:00:00.000Z");
+    assert.deepEqual(events, [{ event: "topic.refresh.ok", added: 1, removed: 1, warmed: 1, total: 1 }]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("刷新失败时不改动候选池，也不向调用方抛错", async () => {
+  const dynamic = providerWith();
+  const stack: TopicProvider = { candidateIds: dynamic.candidateIds,
+    async resolve() { throw new Error("NOT_USED"); } };
+  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", minRequestIntervalMs: 0,
+    fetch: async () => { throw new Error("ENOTFOUND"); } });
+  const events: Record<string, unknown>[] = [];
+  const refresher = new RecommendedRefresher({ client, provider: dynamic, stack,
+    count: 20, max: 60, intervalMs: 60_000, warmNew: false, onEvent: event => events.push(event) });
+
+  // A background task must never be able to break a running game.
+  assert.deepEqual(await refresher.runOnce(), { added: [], removed: [], warmed: 0 });
+  assert.deepEqual(dynamic.candidateIds, ["zhihu-q123"]);
+  assert.equal(events[0]?.event, "topic.refresh.failed");
+  assert.equal(events[0]?.failures, 1);
+
+  // Closing is idempotent and makes every later run a no-op.
+  refresher.close();
+  refresher.close();
+  assert.deepEqual(await refresher.runOnce(), { added: [], removed: [], warmed: 0 });
+});
+
+// A fixed query is the failure mode this guards: the platform's recommendation
+// list is stable per query, so asking the same question daily can return only
+// candidates the pool already has and the rotation silently stalls.
+test("每轮轮换一个主题，避免每轮都问同一个问题", async () => {
+  const asked: (string | null)[] = [];
+  const dynamic = providerWith();
+  const stack: TopicProvider = { candidateIds: dynamic.candidateIds,
+    async resolve() { throw new Error("NOT_USED"); } };
+  const client = new ZhihuContentClient({ accessSecret: "test-only-secret", minRequestIntervalMs: 0,
+    fetch: async input => {
+      asked.push(new URL(String(input)).searchParams.get("Query"));
+      return response({ Items: [{ Title: "新问题", Url: "https://www.zhihu.com/question/999" }] });
+    } });
+  const refresher = new RecommendedRefresher({ client, provider: dynamic, stack,
+    count: 5, max: 60, intervalMs: 60_000, queries: ["职场", "情感"], warmNew: false });
+
+  await refresher.runOnce();
+  await refresher.runOnce();
+  await refresher.runOnce();
+  assert.deepEqual(asked, ["职场", "情感", "职场"]);
+
+  // Empty falls back to the single configured query, which is today's behaviour.
+  const single = new RecommendedRefresher({ client, provider: dynamic, stack, query: "生活方式",
+    count: 5, max: 60, intervalMs: 60_000, queries: [], warmNew: false });
+  await single.runOnce();
+  assert.equal(asked.at(-1), "生活方式");
+});
+
+test("滚动刷新可通过环境变量关闭，取值非法时启动即失败", async () => {
+  const base = { TOPIC_MODE: "recommended", ZHIHU_ACCESS_SECRET: "test-only-secret" };
+  // No snapshot and no network keeps this test offline; the pool degrades to the
+  // curated packs, which is exactly the state the refresh loop exists to repair.
+  const offline = { fetch: async () => { throw new Error("ENOTFOUND"); } };
+
+  const off = await openTopicSystem({ ...base, ZHIHU_TOPIC_REFRESH_MS: "0" }, false, offline);
+  assert.deepEqual(off.topics.candidateIds, productionTopicPacks.map(pack => pack.packId));
+  await off.close();
+
+  const on = await openTopicSystem(base, false, offline);
+  assert.deepEqual(on.topics.candidateIds, productionTopicPacks.map(pack => pack.packId));
+  await on.close();
+
+  // A typo must not silently disable rolling.
+  await assert.rejects(openTopicSystem({ ...base, ZHIHU_TOPIC_REFRESH_MS: "soon" }, false, offline),
+    /INVALID_TOPIC_REFRESH_MS/);
+  await assert.rejects(openTopicSystem({ ...base, ZHIHU_TOPIC_CANDIDATE_MAX: "lots" }, false, offline),
+    /INVALID_TOPIC_CANDIDATE_MAX/);
 });

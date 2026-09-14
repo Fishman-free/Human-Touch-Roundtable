@@ -24,6 +24,18 @@ services:
       ZHIHU_ANSWERS_LIMIT: ${ZHIHU_ANSWERS_LIMIT:-20}
       ZHIHU_TOPIC_FALLBACK: ${ZHIHU_TOPIC_FALLBACK:-static}
       ZHIHU_TOPIC_UNION_ORDER: ${ZHIHU_TOPIC_UNION_ORDER:-curated-first}
+      # Rolling pool. Once a day the app pulls a fresh batch, appends what it has
+      # not seen, drops the oldest past the cap, snapshots the result and pre-warms
+      # the new candidates. 0 disables it; the loop is not started at all.
+      ZHIHU_TOPIC_REFRESH_MS: ${ZHIHU_TOPIC_REFRESH_MS:-86400000}
+      # Cycled one per round. Without it every round asks the same question and the
+      # platform may keep returning candidates the pool already has, which would
+      # freeze the rotation instead of rolling it.
+      ZHIHU_TOPIC_CANDIDATE_QUERIES: ${ZHIHU_TOPIC_CANDIDATE_QUERIES:-生活方式,职场,人际关系,情感,健康}
+      ZHIHU_TOPIC_CANDIDATE_MAX: ${ZHIHU_TOPIC_CANDIDATE_MAX:-60}
+      # Pre-warming costs one question_answers unit and one model call per new
+      # candidate; only set this false if the daily quota is at risk.
+      ZHIHU_TOPIC_REFRESH_WARM: ${ZHIHU_TOPIC_REFRESH_WARM:-true}
       AI_MODE: live
       AI_ATTEMPT_TIMEOUT_MS: ${AI_ATTEMPT_TIMEOUT_MS:-14000}
       AI_MAX_TOKENS: ${AI_MAX_TOKENS:-1024}

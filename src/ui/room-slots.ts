@@ -12,5 +12,7 @@ export interface RoomSlots {
   Debate: ComponentType<{ view: RoomView; busy: boolean; accuse: GameSession["accuse"];
     respond: GameSession["respond"]; followup: GameSession["followup"]; skip: GameSession["skipFollowup"] }>;
   Voting: ComponentType<{ view: RoomView; busy: boolean; vote: GameSession["castVote"] }>;
-  Reveal: ComponentType<{ view: RoomView; theme: GameTheme }>;
+  // Reveal carries the session because a finished game needs an exit: the rematch
+  // and leave actions live on this screen.
+  Reveal: ComponentType<{ view: RoomView; theme: GameTheme; session: GameSession }>;
 }

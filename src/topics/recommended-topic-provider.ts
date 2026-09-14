@@ -38,7 +38,8 @@ export interface RecommendedTopicProviderDependencies {
 }
 
 export class RecommendedTopicProvider implements TopicProvider {
-  readonly candidateIds: readonly string[];
+  // A Map, not an array: insertion order is the pool order that RoomRuntime
+  // indexes into, and it also gives append and trim their ordering for free.
   private candidates: Map<string, RecommendedCandidate>;
   private curatedAt: string;
   private client: ZhihuContentClient;
@@ -50,10 +51,10 @@ export class RecommendedTopicProvider implements TopicProvider {
 
   constructor(seed: RecommendedSeed, deps: RecommendedTopicProviderDependencies) {
     this.candidates = new Map(seed.candidates.map(candidate => [candidateIdFor(candidate.questionId), candidate]));
-    // An empty dynamic half is legitimate at boot (no seed, fetch failed) but it
-    // must not be handed to the union, which would then have nothing to merge.
-    if (!this.candidates.size) throw new Error("INVALID_RECOMMENDED_SEED");
-    this.candidateIds = [...this.candidates.keys()];
+    // An empty pool is legitimate, not a failure: boot can fail to reach the
+    // platform while the curated packs keep the game playable, and the refresh
+    // loop fills this in later. Emptiness is only fatal for a union with nothing
+    // else to merge, which UnionTopicProvider checks for itself.
     this.curatedAt = seed.fetchedAt;
     this.client = deps.client;
     this.content = deps.content;
@@ -64,6 +65,54 @@ export class RecommendedTopicProvider implements TopicProvider {
     if (!Number.isInteger(this.answerLimit) || this.answerLimit < 1 || this.answerLimit > 50) {
       throw new Error("INVALID_ZHIHU_QUESTION_QUERY");
     }
+  }
+
+  // Live view. RoomRuntime samples this modulo its length for every room it
+  // opens, so a snapshot would freeze the pool at boot and make the refresh loop
+  // pointless.
+  get candidateIds(): readonly string[] {
+    return [...this.candidates.keys()];
+  }
+
+  // Appends candidates the pool has not seen and returns the ids actually added.
+  // Existing entries keep their index, which is the point: a room that already
+  // persisted preparation.candidateIndex must keep resolving the same topic, and
+  // that holds only as long as the list never reorders and never loses a prefix.
+  append(candidates: readonly RecommendedCandidate[]): string[] {
+    const added: string[] = [];
+    for (const candidate of candidates) {
+      const candidateId = candidateIdFor(candidate.questionId);
+      if (this.candidates.has(candidateId)) continue;
+      this.candidates.set(candidateId, candidate);
+      added.push(candidateId);
+    }
+    return added;
+  }
+
+  // Drops the oldest candidates until the pool is back within its cap, which is
+  // what keeps a daily refresh from growing the list without bound. A Map
+  // iterates in insertion order, so the head is the oldest.
+  //
+  // This is the one operation that shifts indices, and it shifts every survivor
+  // behind the drop point. A room that persisted its index before the trim and
+  // resolves after it therefore plays a different -- still valid -- topic. That
+  // window is seconds long and a refresh runs once a day, so it is accepted
+  // rather than engineered around; the failure mode is a substitution, not a
+  // broken room.
+  trim(max: number): string[] {
+    const removed: string[] = [];
+    while (this.candidates.size > max) {
+      const oldest = this.candidates.keys().next();
+      if (oldest.done === true) break;
+      this.candidates.delete(oldest.value);
+      removed.push(oldest.value);
+    }
+    return removed;
+  }
+
+  // The whole pool in order, for the snapshot that boot reads.
+  snapshot(): RecommendedCandidate[] {
+    return [...this.candidates.values()];
   }
 
   async resolve(candidateId: string, signal: AbortSignal): Promise<Topic> {

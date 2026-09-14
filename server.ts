@@ -6,7 +6,7 @@ import { Server } from "socket.io";
 import { createAiProvider, createLlmProviders } from "./src/ai/config.ts";
 import { createServerContext } from "./src/server/server-context.ts";
 import type { ClientToServerEvents, ServerToClientEvents } from "./src/server/socket-contracts.ts";
-import { openTopicProvider } from "./src/topics/config.ts";
+import { openTopicSystem } from "./src/topics/config.ts";
 import { handleOperationalRequest } from "./src/server/health.ts";
 import { parseOrigins, socketTransportOptions } from "./src/server/socket-security.ts";
 import { OperationalMonitor } from "./src/observability/monitor.ts";
@@ -61,15 +61,17 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(http, {
   ...socketTransportOptions(allowedOrigins, development),
 });
 // Only TOPIC_MODE=recommended performs I/O here, bounded by
-// ZHIHU_TOPIC_CANDIDATE_TIMEOUT_MS; every other mode returns synchronously.
-const topics = await openTopicProvider(process.env, development, {
+// ZHIHU_TOPIC_CANDIDATE_TIMEOUT_MS; every other mode returns synchronously. That
+// mode also starts the rolling-pool refresh loop, which is why this is the
+// system entry point rather than the provider-only one.
+const topicSystem = await openTopicSystem(process.env, development, {
   llm: createLlmProviders(process.env, development),
   onAlert: event => monitor.lifecycle("topic.candidates.alert", event),
 });
 const context = createServerContext({ databasePath, sessionHmacKey,
   runtime: { topicTimeoutMs },
   socket: { trustedProxyHops, onSecurityEvent: event => monitor.security(event) } }, {
-  topics,
+  topics: topicSystem.topics,
   ai: createAiProvider(process.env, development, event => monitor.ai(event)),
   diagnose: event => monitor.runtime(event),
 });
@@ -90,6 +92,7 @@ async function shutdown() {
   ready = false;
   oauth.clear();
   monitor.lifecycle("server.stopping");
+  await topicSystem.close();
   await new Promise<void>(resolveClose => io.close(() => resolveClose()));
   await context.close();
   await new Promise<void>(resolveClose => http.close(() => resolveClose()));

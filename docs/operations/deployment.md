@@ -50,6 +50,29 @@ docker compose exec -T app node scripts/warm-topics.ts
 
 预热必须与运行环境使用同一个`ZHIHU_TOPIC_CACHE_PATH`。该脚本在没有可用模型时会直接拒绝运行，避免把兜底文案当成正式内容写进缓存。
 
+### 题库滚动
+
+`TOPIC_MODE=recommended`时应用会在运行期间持续换题，不再只在启动那一刻固定候选池：
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `ZHIHU_TOPIC_REFRESH_MS` | `86400000` | 每轮刷新的间隔；`0`表示不启动刷新循环 |
+| `ZHIHU_TOPIC_CANDIDATE_QUERIES` | `生活方式,职场,人际关系,情感,健康` | 每轮轮换一个主题，逗号分隔 |
+| `ZHIHU_TOPIC_CANDIDATE_MAX` | `60` | 候选池上限，超出后从最旧的动态题开始淘汰 |
+| `ZHIHU_TOPIC_REFRESH_WARM` | `true` | 是否预热本轮新增的候选 |
+
+主题轮换不是可选项而是滚动能生效的前提：平台对同一主题的推荐列表是稳定的，固定用一个主题每天问，很可能返回的全是池子里已有的候选，追加数长期为0，池子就冻住了。留空`ZHIHU_TOPIC_CANDIDATE_QUERIES`会退化为只用`ZHIHU_TOPIC_CANDIDATE_QUERY`。
+
+每轮消耗约一次`creator`额度（拉候选）加每个新候选一次`question_answers`额度与一次模型调用（预热），相对100/日的额度是宽裕的。想关闭滚动而不重建镜像：
+
+```sh
+ZHIHU_TOPIC_REFRESH_MS=0 docker compose up -d --force-recreate app
+```
+
+刷新失败只写`topic.refresh.failed`事件并保留原候选池，不影响正在进行的对局。排查时看这一组事件：`topic.refresh.ok`、`topic.refresh.empty`、`topic.refresh.failed`、`topic.refresh.warm_failed`。判断某局是否真的走了缓存，仍以对局后`topic-cache.json`的mtime是否变化为准。
+
+**已知取舍**：淘汰最旧的动态题会移动存活候选的下标。若某个房间恰好在淘汰前后跨越「建房→出题」这个几秒的窗口，它会改判到另一道同样合法的题目。窗口极短且一天只发生一次，未额外加锁。
+
 ## 发布
 
 ```sh
