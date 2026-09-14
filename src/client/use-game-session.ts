@@ -100,7 +100,20 @@ export function useGameSession(): GameSession {
       outbox.clear();
       setBusy(false); setView(undefined); setError("会话已过期，请重新进入房间");
     });
-    return () => { outbox.pause(); socket.disconnect(); socketRef.current = null; outboxRef.current = null; };
+    // Bfcache kills the transport without notifying the client; otherwise reconnect waits out the
+    // full heartbeat timeout. Reconnect synchronously when the page is restored from bfcache.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      const current = socketRef.current;
+      if (!current) return;
+      if (current.connected) current.disconnect();
+      current.connect();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      outbox.pause(); socket.disconnect(); socketRef.current = null; outboxRef.current = null;
+    };
   }, []);
 
   // leave() disconnects the socket, so the session is suspended for a beat and a
