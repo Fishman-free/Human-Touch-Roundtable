@@ -34,7 +34,9 @@ export function useGameSession(): GameSession {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const socket: GameSocket = io();
+    // Browsers omit Origin on same-origin GET polling handshakes, which the production origin check rejects;
+    // the WebSocket handshake always carries Origin.
+    const socket: GameSocket = io({ transports: ["websocket"] });
     socketRef.current = socket;
     const transport: OutboxTransport = (submission, acknowledge) => {
       const emit = socket.emit.bind(socket) as (event: string, input: unknown,
