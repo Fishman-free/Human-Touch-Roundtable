@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { GameState, Topic } from "../game/model.ts";
 import { aiContext, project, type Viewer } from "../game/projection.ts";
 import { advanceTime, createGame, transition } from "../game/transition.ts";
-import { aiBeatMs, AI_BEAT_MS } from "../game/rules.ts";
+import { aiBeatWindow } from "../game/rules.ts";
 import { assignSeats } from "./seat-assignment.ts";
 import type { AiAction, AiCommand, CommandAck, DiagnosticKind, PlayerRequest, RandomSource,
   RoomRecord, RoomView, RuntimeDependencies, RuntimeErrorCode, RuntimeOptions } from "./ports.ts";
@@ -276,13 +276,13 @@ export class RoomRuntime {
   }
 
   // A model replies in milliseconds, so an AI seat that speaks the moment its phase
-  // opens is the loudest tell at the table. Each seat draws its own beat, and the
-  // beat is capped so generation still finishes before the phase deadline.
+  // opens is the loudest tell at the table. Each seat draws its own beat from the
+  // window this phase can afford, so generation still finishes before the deadline.
   private aiBeat(state: GameState): number {
-    const spread = AI_BEAT_MS.max - AI_BEAT_MS.min;
-    const drawn = AI_BEAT_MS.min + this.deps.random.integer(spread + 1);
-    if (state.deadlineAt === undefined) return drawn;
-    return aiBeatMs(drawn, state.deadlineAt - this.now(), this.options.aiTimeoutMs);
+    const remaining = state.deadlineAt === undefined
+      ? Number.POSITIVE_INFINITY : state.deadlineAt - this.now();
+    const { min, max } = aiBeatWindow(remaining, this.options.aiTimeoutMs, state.topic?.title ?? "");
+    return min + this.deps.random.integer(max - min + 1);
   }
 
   // Resolves early when the phase ends: reconcile() aborts every task it owns, and

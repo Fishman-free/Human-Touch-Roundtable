@@ -4,7 +4,7 @@ import type { AiCommand, AiProvider, AiRequest, Clock, PlayerCommand, PlayerRequ
 import { RoomRuntime } from "../src/application/room-runtime.ts";
 import { assignSeats } from "../src/application/seat-assignment.ts";
 import type { Topic } from "../src/game/model.ts";
-import { AI_BEAT_MS, aiBeatMs, roleCounts } from "../src/game/rules.ts";
+import { ANSWER_MS, aiBeatWindow, roleCounts } from "../src/game/rules.ts";
 import { MemoryRoomStore } from "../src/repository/memory-room-store.ts";
 import { advanceTime } from "../src/game/transition.ts";
 import { RoomRegistry } from "../src/server/room-registry.ts";
@@ -19,6 +19,11 @@ const topic: Topic = {
     3: ["工具下班了，责任还在加班。", "省下的时间，最后又拿去开会了。"],
   },
 };
+
+// 运行时用例给模型留的预算，节拍窗口的下界由它和阶段剩余时间共同决定。
+const AI_TIMEOUT_MS = 100;
+// 用例都把随机源钉成 0，节拍因此恰为窗口下界；上面那道题面 12 字，落在缩放后的下界上。
+const beatFloor = aiBeatWindow(ANSWER_MS, AI_TIMEOUT_MS, topic.title).min;
 
 class FakeClock implements Clock {
   value = 0;
@@ -147,11 +152,18 @@ function request(runtime: RoomRuntime, id: string, command: PlayerCommand): Play
   return { commandId: id, matchId: view.matchId, phaseToken: view.phaseToken, command };
 }
 
+// 走完 AI 座位的发言节拍。这里只推进到那一刻本身：再往前一步就会把节拍和任务超时
+// 放进同一次 advance 里触发，而真实时钟上两者是分开的宏任务，顺序恰好相反。
+async function elapseBeat(clock: FakeClock, beat = beatFloor) {
+  clock.advance(beat);
+  await new Promise<void>(resolve => setImmediate(resolve));
+}
+
 async function startRuntime(options: { count?: number; clock?: FakeClock; store?: RoomStore; topics?: TopicProvider; ai?: AiProvider; random?: RandomSource } = {}) {
   const clock = options.clock ?? new FakeClock();
   const dependencies = deps(clock, options.store, options.topics, options.ai, options.random);
   const runtime = await RoomRuntime.open("room", "match", dependencies, {
-    topicTimeoutMs: 100, aiTimeoutMs: 100, retryMs: 10, topicBackoffMs: 20, topicMaxBackoffMs: 80,
+    topicTimeoutMs: 100, aiTimeoutMs: AI_TIMEOUT_MS, retryMs: 10, topicBackoffMs: 20, topicMaxBackoffMs: 80,
   });
   const count = options.count ?? 2;
   for (let i = 0; i < count; i++) assert.equal((await runtime.dispatch(`p${i}`, request(runtime, `j${i}`, { type: "join" }))).ok, true);
@@ -279,8 +291,8 @@ test("AI任务在队列外完成并通过核心提交，广播发生在保存后
   const clock = new FakeClock();
   const store = new MemoryRoomStore();
   const ai = new AnsweringAi();
-  const { runtime } = await startRuntime({ clock, store, ai });
-  clock.advance(AI_BEAT_MS.max);   // 走完 AI 座位自己的发言节拍
+  const { runtime } = await startRuntime({ clock, store, ai, random: { integer: () => 0 } });
+  await elapseBeat(clock);
   await flushUntil(() => ai.requests.length === 1 && runtime.view({ kind: "spectator" }).answers[1].length === 1, "AI answer");
   const persisted = await store.load("room");
   assert.equal(persisted!.state.answers[1].length, 1);
@@ -297,7 +309,7 @@ test("AI座位发言前先等待自己的节拍，不会在阶段开放瞬间抢
   // 固定随机源把座位分配和抽题钉死，节拍因此取下界，可以精确断言边界。
   const { runtime } = await startRuntime({ clock, ai, random: { integer: () => 0 } });
   assert.equal(ai.requests.length, 0, "阶段刚开放时不该有请求");
-  clock.advance(AI_BEAT_MS.min - 1);
+  clock.advance(beatFloor - 1);
   await new Promise<void>(resolve => setImmediate(resolve));
   assert.equal(ai.requests.length, 0, "节拍没走完不发请求");
   clock.advance(1);
@@ -306,17 +318,26 @@ test("AI座位发言前先等待自己的节拍，不会在阶段开放瞬间抢
   await runtime.close();
 });
 
+test("题面越长节拍越晚，短题面更早开口，两端各自封顶", () => {
+  const baseline = "字".repeat(30);
+  assert.deepEqual(aiBeatWindow(90_000, 15_000, baseline), { min: 40_000, max: 70_000 }, "基准题面落在基准窗口");
+  assert.deepEqual(aiBeatWindow(90_000, 15_000, "字".repeat(8)), { min: 24_000, max: 42_000 }, "短题面整体提前");
+  assert.deepEqual(aiBeatWindow(90_000, 15_000, "字".repeat(60)), { min: 56_000, max: 75_000 }, "长题面推后并被轮次预算封顶");
+  assert.deepEqual(aiBeatWindow(90_000, 15_000, "字".repeat(300)), { min: 56_000, max: 75_000 }, "再长也不超过上限");
+});
+
 test("节拍受阶段剩余时间约束，短阶段不会把生成预算等掉", () => {
-  assert.equal(aiBeatMs(10_000, 90_000, 15_000), 10_000, "长阶段不受影响");
-  assert.equal(aiBeatMs(10_000, 20_000, 15_000), 5_000, "指认阶段只剩五秒可以等");
-  assert.equal(aiBeatMs(3_000, 20_000, 15_000), 3_000, "下界之内不放大");
-  assert.equal(aiBeatMs(10_000, 5_000, 15_000), 0, "剩余时间不够生成就直接发请求");
+  const baseline = "字".repeat(30);
+  assert.deepEqual(aiBeatWindow(60_000, 15_000, baseline), { min: 40_000, max: 45_000 }, "投票阶段只剩四十五秒可以等");
+  assert.deepEqual(aiBeatWindow(45_000, 15_000, baseline), { min: 30_000, max: 30_000 }, "应答阶段只等一半时间");
+  assert.deepEqual(aiBeatWindow(20_000, 15_000, baseline), { min: 5_000, max: 5_000 }, "指认阶段只剩五秒");
+  assert.deepEqual(aiBeatWindow(5_000, 15_000, baseline), { min: 0, max: 0 }, "剩余时间不够生成就直接发请求");
 });
 
 test("AI结果迟到后作废，截止时只补一条默认答案", async () => {
   const ai = new DeferredAi();
-  const { runtime, clock } = await startRuntime({ ai });
-  clock.advance(AI_BEAT_MS.max);   // 走完 AI 座位自己的发言节拍
+  const { runtime, clock } = await startRuntime({ ai, random: { integer: () => 0 } });
+  await elapseBeat(clock);
   await flushUntil(() => ai.requests.length === 1, "pending AI request");
   for (let i = 0; i < 2; i++) {
     const view = runtime.view({ kind: "participant", participantId: `p${i}` });
