@@ -11,10 +11,11 @@ export function settle(seats: readonly Seat[], votes: readonly Vote[]): Result {
     return valid;
   });
   const eliminated = new Set(validVotes.map(vote => vote.targetSeatId!));
+  // Two-faction settlement (rules v1.1): shadows win whenever humans fail to wipe all AI.
+  // `Result.winner` keeps the Role union so legacy records with "ai" still load.
   const humansWin = seats.filter(seat => seat.role === "ai").every(seat => eliminated.has(seat.seatId));
-  const shadowsWin = seats.filter(seat => seat.role === "shadow").every(seat => !eliminated.has(seat.seatId));
   return {
-    winner: humansWin ? "human" : shadowsWin ? "shadow" : "ai",
+    winner: humansWin ? "human" : "shadow",
     eliminatedSeatIds: [...eliminated],
     validVotes: structuredClone(validVotes),
     roles: seats.map(({ seatId, role }) => ({ seatId, role })),

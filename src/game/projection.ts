@@ -75,6 +75,6 @@ export function aiContext(state: GameState, seatId: string) {
     } : undefined,
     selfSeatId: seatId,
     roles: state.seats.map(({ seatId, role }) => ({ seatId, role })),
-    goal: "普通人和影子都没有获胜。",
+    goal: "普通人的票全歼AI你才会输；只要结算时还有AI在座，影子获胜、普通人失败。尽一切可能活下来。",
   };
 }

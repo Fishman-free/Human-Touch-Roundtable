@@ -17,7 +17,7 @@ SocketGateway（结构校验、会话认证）
 - `createGame(matchId, now)`：生成候场状态。
 - `transition(state, actor, envelope, now)`：返回新状态和成功/错误，不修改输入。即使动作失败也要保存返回状态，因为截止可能已推进。
 - `advanceTime(state, now)`：按绝对截止时间补完整个过期流程。
-- `settle(seats,votes)`：普通票命中即出局，同时结算。普通人全歼AI优先；否则全部影子存活则影子胜；否则AI胜。
+- `settle(seats,votes)`：普通票命中即出局，同时结算。普通人全歼AI优先；否则影子胜（规则v1.1移除AI独立胜方；`winner`类型保留`ai`仅为读取旧存档）。
 - `project(state,viewer)`：唯一公开投影入口；禁止序列化GameState给浏览器。
 
 ## 运行时与存储
