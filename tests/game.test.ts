@@ -235,15 +235,15 @@ test("只能辩论后投票，禁止自投、空目标和改票，投票中不�
   assert.equal(view.result, undefined);
 });
 
-test("普通人重复命中AI无法全歼；影子全存活时影子胜", () => {
+test("普通人重复命中AI无法全歼；影子胜（含影子全存活）", () => {
   const state = finishWith(voting(), ["s4", "s4"]);
   assert.equal(state.result!.winner, "shadow");
   assert.deepEqual(state.result!.eliminatedSeatIds, ["s4"]);
 });
 
-test("普通人未全歼且两个影子中任意一个出局，AI胜", () => {
+test("普通人未全歼且两个影子中任意一个出局，影子胜（v1.1无AI胜方）", () => {
   const state = finishWith(voting(4), ["s3", "s5"]);
-  assert.equal(state.result!.winner, "ai");
+  assert.equal(state.result!.winner, "shadow");
   assert.ok(state.result!.eliminatedSeatIds.includes("s3"));
   assert.ok(!state.result!.eliminatedSeatIds.includes("s4"));
 });
