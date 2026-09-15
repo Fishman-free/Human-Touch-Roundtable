@@ -276,13 +276,22 @@ export class RoomRuntime {
   }
 
   // A model replies in milliseconds, so an AI seat that speaks the moment its phase
-  // opens is the loudest tell at the table. Each seat draws its own beat from the
-  // window this phase can afford, so generation still finishes before the deadline.
-  private aiBeat(state: GameState): number {
+  // opens is the loudest tell at the table. Two AI seats speaking seconds apart is
+  // the second: the window is sliced into one band per speaking seat and each seat
+  // draws inside its own band, so the draws cannot land on the same second. The
+  // later band also makes the second seat read the first seat's answer before it
+  // writes, which is what keeps two AI seats from making the same point. A single
+  // seat gets the whole window, so a one-AI table behaves exactly as before.
+  private aiBeats(state: GameState, count: number): number[] {
     const remaining = state.deadlineAt === undefined
       ? Number.POSITIVE_INFINITY : state.deadlineAt - this.now();
     const { min, max } = aiBeatWindow(remaining, this.options.aiTimeoutMs, state.topic?.title ?? "");
-    return min + this.deps.random.integer(max - min + 1);
+    const span = Math.max(0, max - min);
+    return Array.from({ length: count }, (_, index) => {
+      const low = min + Math.floor(span * index / count);
+      const high = min + Math.floor(span * (index + 1) / count);
+      return low + this.deps.random.integer(Math.max(1, high - low + 1));
+    });
   }
 
   // Resolves early when the phase ends: reconcile() aborts every task it owns, and
@@ -340,11 +349,12 @@ export class RoomRuntime {
         }
       }
     }
-    for (const { seatId, action } of work) {
+    const beats = this.aiBeats(state, work.length);
+    for (const [index, { seatId, action }] of work.entries()) {
       const key = `ai:${state.phaseToken}:${seatId}`;
       if (this.aiAttempts.has(key)) continue;
       this.aiAttempts.add(key);
-      const beat = this.aiBeat(state);
+      const beat = beats[index];
       const deadlineAt = state.deadlineAt!;
       // The beat runs outside the room's command queue, and the context is read
       // after it: a seat that waits also answers what the table has said meanwhile.

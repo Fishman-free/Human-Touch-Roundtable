@@ -318,6 +318,28 @@ test("AI座位发言前先等待自己的节拍，不会在阶段开放瞬间抢
   await runtime.close();
 });
 
+test("同桌两个AI分处不同节拍段，不会挤在同一秒开口", async () => {
+  const clock = new FakeClock();
+  const ai = new AnsweringAi();
+  // 三人局带 2 个 AI 座位。窗口被切成两段，固定随机源让每段各取自己的下界。
+  const { runtime } = await startRuntime({ count: 3, clock, ai, random: { integer: () => 0 } });
+  const window = aiBeatWindow(ANSWER_MS, AI_TIMEOUT_MS, topic.title);
+  const secondBeat = window.min + Math.floor((window.max - window.min) / 2);
+  assert.ok(secondBeat > window.min, "第二段的下界必须晚于第一段");
+  assert.equal(ai.requests.length, 0, "阶段刚开放时不该有请求");
+  // 两段分开推进：假时钟的 advance 是同步循环，一口气跨过两个节拍会把第一个AI
+  // 的生成和它自己的任务超时塞进同一轮，而真实时钟上两者是分开的宏任务。
+  await elapseBeat(clock, window.min);
+  assert.equal(ai.requests.length, 1, "第一个AI开口后，第二个还没到点");
+  assert.equal(ai.requests[0].context.roles.filter(item => item.role === "ai").length, 2, "三人局应当有两个AI座位");
+  clock.advance(secondBeat - window.min - 1);
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(ai.requests.length, 1, "第二个AI的节拍没走完");
+  clock.advance(1);
+  await flushUntil(() => ai.requests.length === 2, "第二个AI的请求");
+  await runtime.close();
+});
+
 test("题面越长节拍越晚，短题面更早开口，两端各自封顶", () => {
   const baseline = "字".repeat(30);
   assert.deepEqual(aiBeatWindow(90_000, 15_000, baseline), { min: 40_000, max: 70_000 }, "基准题面落在基准窗口");
