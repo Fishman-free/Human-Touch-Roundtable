@@ -25,7 +25,11 @@ test("进程被SIGKILL后从WAL恢复，补过全部截止并可从备份再次�
     let stderr = ""; child.stderr.on("data", chunk => { stderr += String(chunk).slice(0, 4096); });
     const exit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolveExit =>
       child.once("exit", (code, signal) => resolveExit({ code, signal })));
-    assert.equal(exit.signal, "SIGKILL", stderr);
+    // Windows 没有 POSIX 信号：process.kill(pid, "SIGKILL") 实际走 TerminateProcess，
+    // 退出事件里 signal 恒为 null、只有 code 有效（实测为 1）。分平台断言，好让下面的
+    // 恢复校验在 Windows 上也能跑到——否则它会一直卡在这一行。
+    if (process.platform === "win32") assert.notEqual(exit.code, 0, stderr);
+    else assert.equal(exit.signal, "SIGKILL", stderr);
 
     const persistence = new SqlitePersistence(path);
     assert.equal(persistence.integrityCheck(), true);
