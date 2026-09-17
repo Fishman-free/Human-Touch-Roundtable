@@ -17,7 +17,7 @@ const personas = [
   "话不多，偏冷淡，一句顶一句。",
 ];
 
-export const PROMPT_VERSION = "roundtable-ai-v1";
+export const PROMPT_VERSION = "roundtable-ai-v2";
 
 export function buildPrompt(request: AiRequest, maxTokens = 1_024): LlmRequest {
   const persona = personas[(Number(request.seatId.slice(1)) - 1) % personas.length];
