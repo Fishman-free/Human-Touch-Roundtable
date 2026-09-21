@@ -2,7 +2,7 @@ import type { RoomView } from "../../contracts/public.ts";
 import { ANSWER_LIMIT } from "../../contracts/rules.ts";
 
 export const gamePresentation = {
-  brand: { name: "人味圆桌局", subtitle: "知乎问题上的匿名人机辨认局" },
+  brand: { name: "人味圆桌局", subtitle: "一桌人和AI的匿名社交推理局" },
   phase: {
     lobby: "候场", preparing: "选题", answering: "发言", debating: "辩论", voting: "投票", revealed: "揭示",
   } satisfies Record<RoomView["phase"], string>,
