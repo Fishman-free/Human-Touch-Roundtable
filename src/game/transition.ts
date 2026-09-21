@@ -125,9 +125,10 @@ function playerText(value: unknown, limit?: number): string {
 function validateTopic(topic: Topic) {
   requireRule(topic && typeof topic === "object", "INVALID_INPUT");
   for (const value of [topic.id, topic.title, topic.topAnswerExcerpt, topic.topConsensusSummary]) text(value);
-  requireRule(typeof topic.url === "string" && /^https:\/\/www\.zhihu\.com\/question\/\d+\/?$/.test(topic.url), "INVALID_INPUT");
+  const original = topic.provenance?.source === "original";
+  requireRule(typeof topic.url === "string" && (original ? topic.url === "" : /^https:\/\/www\.zhihu\.com\/question\/\d+\/?$/.test(topic.url)), "INVALID_INPUT");
   requireRule(topic.provenance && /^[a-z0-9][a-z0-9-]{2,79}$/.test(topic.provenance.packId) &&
-    topic.provenance.source === "zhihu" && !Number.isNaN(Date.parse(topic.provenance.curatedAt)) &&
+    (topic.provenance.source === "zhihu" || original) && !Number.isNaN(Date.parse(topic.provenance.curatedAt)) &&
     (topic.provenance.verifiedAt === undefined || !Number.isNaN(Date.parse(topic.provenance.verifiedAt))) &&
     (topic.provenance.selectedAnswerUrl === undefined || /^https:\/\/www\.zhihu\.com\/question\/\d+\/answer\/[^/?#]+/.test(topic.provenance.selectedAnswerUrl)) &&
     (topic.provenance.selectedVoteUpCount === undefined || Number.isSafeInteger(topic.provenance.selectedVoteUpCount) &&

@@ -41,10 +41,10 @@ npm run dev
 开发服务器使用：
 
 - `./data/roundtable.db`：SQLite房间和会话数据。
-- `StaticTopicProvider`：本地预置的知乎题目材料。
+- `LocalTopicProvider`：开发和生产默认使用6道原创讨论题，不要求知乎凭据；材料是虚构观点，不冒充高赞回答。
 - `RecommendedTopicProvider`：`TOPIC_MODE=recommended`时从知乎问题推荐接口取题；共识与默认答案由模型生成，并带确定性兜底文案。
 - `MockAiProvider`：带短延迟的可控AI行为。
-- 开发专用会话密钥。生产启动还必须显式设置会话密钥、Origin、真实模型和经核验题目提供器。
+- 开发专用会话密钥。生产启动还必须显式设置会话密钥、Origin和真实模型；在线核验或动态推荐题目才需要知乎凭据。
 
 生产基础设施检查：
 
@@ -53,7 +53,7 @@ npm run build
 npm run smoke:prod
 ```
 
-生产默认使用已实现的知乎搜索核验网关，并要求通过环境注入`ZHIHU_ACCESS_SECRET`；没有凭据时拒绝启动。完整环境变量和部署步骤见[生产部署](docs/operations/deployment.md)。
+生产默认使用原创讨论题，无需`ZHIHU_ACCESS_SECRET`即可启动和开局。设置`TOPIC_MODE=verified`或`recommended`时才需要知乎凭据。完整环境变量和部署步骤见[生产部署](docs/operations/deployment.md)。
 
 ## 文件入口
 

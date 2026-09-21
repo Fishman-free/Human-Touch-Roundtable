@@ -43,14 +43,14 @@ function Lobby({ view, busy, ready }: { view: RoomView; busy: boolean; ready: (v
 }
 
 function Preparing({ view }: { view: RoomView }) {
-  return <section className="preparing"><div className="loader" /><p className="kicker">正在连线知乎问题</p>
+  return <section className="preparing"><div className="loader" /><p className="kicker">正在准备讨论题目</p>
     <h2>题目确认后自动开席</h2><p>{view.self ? `你的身份：${copy.role[view.self.role]}` : "观战席已就位"}</p></section>;
 }
 
 function Game({ view, session, theme, slots }: { view: RoomView; session: GameSession; theme: GameTheme; slots: RoomSlots }) {
   return <>
-    <section className="topic-band"><div><p className="kicker">本局知乎问题</p><h2>{view.topic?.title}</h2>
-      <a href={view.topic?.url} target="_blank" rel="noreferrer">查看原问题 <ArrowRight size={14} /></a></div>
+    <section className="topic-band"><div><p className="kicker">{view.topic?.source === "original" ? "原创讨论题 · 材料为虚构观点" : "知乎来源讨论题"}</p><h2>{view.topic?.title}</h2>
+      {view.topic?.url && <a href={view.topic.url} target="_blank" rel="noreferrer">查看原问题 <ArrowRight size={14} /></a>}</div>
       <div className="private-role"><span>你的身份</span><strong>{view.self ? copy.role[view.self.role] : "观战者"}</strong></div></section>
     <slots.StageRail view={view} />
     <slots.Roundtable view={view} theme={theme} />

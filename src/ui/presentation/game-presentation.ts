@@ -9,9 +9,9 @@ export const gamePresentation = {
   role: { human: "普通人", shadow: "影子", ai: "AI" },
   winner: { human: "普通人胜利", shadow: "影子胜利", ai: "AI胜利" },
   rounds: {
-    1: { title: "一句话总结", prompt: "总结该问题的高赞共识", limit: ANSWER_LIMIT[1] },
+    1: { title: "一句话总结", prompt: "用一句话概括你对这个问题的看法", limit: ANSWER_LIMIT[1] },
     2: { title: "正反站边", prompt: "选择立场，给出一个理由", limit: ANSWER_LIMIT[2] },
-    3: { title: "神回复", prompt: "给最高赞回答写一条评论区回复", limit: ANSWER_LIMIT[3] },
+    3: { title: "神回复", prompt: "读本局讨论材料，写一句评论", limit: ANSWER_LIMIT[3] },
   },
   stages: ["第一轮", "第二轮", "第三轮", "辩论", "投票", "揭示"],
 } as const;

@@ -17,12 +17,13 @@ function requireValid(condition: unknown): asserts condition { if (!condition) f
 
 function validateTopic(value: unknown): asserts value is Topic {
   requireValid(object(value) && nonempty(value.id) && nonempty(value.title) &&
-    typeof value.url === "string" && /^https:\/\/www\.zhihu\.com\/question\/\d+\/?$/.test(value.url) &&
+    typeof value.url === "string" && (object(value.provenance) && value.provenance.source === "original"
+      ? value.url === "" : /^https:\/\/www\.zhihu\.com\/question\/\d+\/?$/.test(value.url)) &&
     nonempty(value.topAnswerExcerpt) && nonempty(value.topConsensusSummary) && object(value.defaults));
   // Legacy records created before topic-pack v1 have no provenance. All newly
   // resolved topics are required to include it by the core transition.
   if (value.provenance !== undefined) requireValid(object(value.provenance) && nonempty(value.provenance.packId) &&
-    value.provenance.source === "zhihu" && nonempty(value.provenance.curatedAt) &&
+    ["zhihu", "original"].includes(value.provenance.source as string) && nonempty(value.provenance.curatedAt) &&
     (value.provenance.selectedAnswerUrl === undefined || nonempty(value.provenance.selectedAnswerUrl)) &&
     (value.provenance.selectedVoteUpCount === undefined || integer(value.provenance.selectedVoteUpCount)));
   for (const round of [1, 2, 3] as const) {
