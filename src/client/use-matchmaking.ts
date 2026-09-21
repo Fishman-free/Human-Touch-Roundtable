@@ -64,13 +64,13 @@ export function useMatchmaking(suspended: boolean,
   }
 
   useEffect(() => {
-    if (!account?.user || suspended || !tracking) return;
+    if ((!account?.user && !account?.guest) || suspended || !tracking) return;
     void request("poll");
     const timer = window.setInterval(() => { void request("poll"); }, 3_000);
     return () => window.clearInterval(timer);
     // Polling follows account/room lifecycle; current callbacks and the request lock are refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account?.user, suspended, tracking]);
+  }, [account?.user, account?.guest, suspended, tracking]);
 
   async function logout() {
     if (lock.current || suspendedRef.current) return;

@@ -29,7 +29,8 @@ export function useGameSession(): GameSession {
   const outboxRef = useRef<CommandOutbox | null>(null);
   const [connected, setConnected] = useState(false);
   const [view, setView] = useState<RoomView>();
-  const [roomId, setRoomId] = useState("roundtable");
+  const [roomId, setRoomId] = useState(() => typeof window === "undefined" ? "roundtable" :
+    new URLSearchParams(window.location.search).get("room")?.toLowerCase() || "roundtable");
   const [mode, setMode] = useState<JoinMode>("player");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
