@@ -2,14 +2,17 @@
 
 **协作入口：** [贡献指南](CONTRIBUTING.md) · [接口总览](docs/contracts/README.md) · [前端扩展](docs/contracts/frontend.md) · [后端契约](docs/contracts/backend.md)
 
-当前已实现TypeScript游戏核心、房间运行时、Socket.IO会话协议和SQLite持久化，包含候场准备、题目与角色配置校验、三轮回答、辩论、投票、结算、身份视图裁剪、串行命令、计时、题目轮换、AI任务编排及断线/进程恢复。
+人味圆桌局是一款可自托管的社交推理玩具：一桌人和AI混坐，还有真人故意扮演AI。三轮回答、一次辩论和一票揭示，看看谁把谁骗了。默认不依赖知乎登录或知乎接口；知乎题源保留为可选扩展。
+
+当前已实现TypeScript游戏核心、房间运行时、Socket.IO会话协议和SQLite持久化，包含候场准备、原创题目与角色配置校验、三轮回答、辩论、投票、结算、身份视图裁剪、串行命令、计时、题目轮换、AI任务编排及断线/进程恢复。
 
 ## 当前验证状态
 
 | 能力 | 状态 |
 |---|---|
 | 核心、Socket、SQLite恢复 | 已有自动测试；不等于公网验收 |
-| 知乎题目 | 11个正式候选，9个已在线核验并进入运行时生产集合，2个待核验；`TOPIC_MODE=recommended`可并入动态推荐题目 |
+| 默认题库 | 6道原创讨论题，无平台请求即可开局 |
+| 可选知乎题源 | 11个正式候选，9个已有在线核验记录；`TOPIC_MODE=recommended`可并入动态推荐题目 |
 | GLM | 清华代理`glm-5.3-flash`七动作单次真实验证通过 |
 | DeepSeek | `deepseek-v4-flash`七动作单次真实验证通过；未证明长期稳定性和容量 |
 | 内容安全 | 基础确定性过滤，不是完整审核系统 |
@@ -57,7 +60,7 @@ npm run smoke:prod
 
 ## 文件入口
 
-- [知乎登录与公共匹配](docs/operations/zhihu-login-matchmaking.md)：airoundtable.stream回调配置、匿名匹配和真实授权待验收项。
+- [可选知乎登录与公共匹配](docs/operations/zhihu-login-matchmaking.md)：游客默认可匹配，知乎登录与外部题源作为可选扩展。
 
 - [规则书](docs/product/game-rules.md)：已经冻结的产品规则。
 - [验证状态矩阵](docs/contracts/validation-status.md)：代码、CI、真实外部验证和目标环境验收的区别。
@@ -81,7 +84,7 @@ npm run smoke:prod
 - [隐私工程基线](docs/product/privacy.md)：数据保存、模型传输、保留和删除。
 - `src/game/model.ts`：服务端权威类型、动作与结果。
 - `src/game/transition.ts`：不可变状态转换和超时补全。
-- `src/game/settlement.ts`：普通人有效票与三方胜负。
+- `src/game/settlement.ts`：普通人有效票与两方胜负。
 - `src/game/projection.ts`：玩家、观战和服务端AI的可见内容。
 - `src/game/rules.ts`：人数、时限、字数限制。
 - `tests/game.test.ts`：四档人数的整局及异常验收。
@@ -107,14 +110,14 @@ npm run smoke:prod
 - `src/ui/theme/`：主题契约、注册表和视觉Token。
 - `src/ui/presentation/game-presentation.ts`：品牌、阶段和轮次展示配置。
 - `src/components/`：入口与房间阶段组件。
-- `src/topics/static-topic-provider.ts`：开发题目包。
+- `src/topics/local-topic-provider.ts`：默认原创讨论题。
 - `src/ai/mock-ai-provider.ts`：开发AI行为。
 
 ## 实现范围
 
-Socket层签发和验证会话凭据，再把认证身份交给运行时；SQLite可以主动恢复完整私有房间和会话摘要。浏览器版本可用本地题目和模拟AI走完整流程；知乎热榜/搜索及GLM全动作已用真实凭据在线验证，DeepSeek仍仅具备接入和主备切换代码。
+Socket层签发和验证会话凭据，再把认证身份交给运行时；SQLite可以主动恢复完整私有房间和会话摘要。浏览器版本不配置平台凭据即可用原创题和模型走完整流程；知乎热榜/搜索、OAuth和动态题源保留为可选扩展。
 
-正式题库目前有11个候选，其中9个进入运行时生产集合，其余2个待验证；设置`TOPIC_MODE=recommended`可在此基础上并入知乎问题推荐接口的动态题目。剩余重点是完整内容审核（含动态题的模型生成共识与默认答案）、真实浏览器弱网E2E、目标环境代理/容量/磁盘演练和管理网络隔离。状态以[验证矩阵](docs/contracts/validation-status.md)为准。
+默认题库目前有6道原创讨论题；设置`TOPIC_MODE=verified`或`recommended`可切换到可选知乎题源。剩余重点是完整内容审核、真实浏览器弱网E2E、目标环境代理/容量/磁盘演练和管理网络隔离。状态以[验证矩阵](docs/contracts/validation-status.md)为准。
 
 GitHub Actions会执行仓库内容扫描、类型检查、测试和构建。默认排除本地数据库、凭据、构建缓存、第三方工具包、根目录历史策划原稿及本地上传清单。
 

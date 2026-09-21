@@ -186,7 +186,7 @@ function RevealStage({ view, theme, session }: { view: RoomView; theme: GameThem
           <button className="secondary large" disabled={session.busy} onClick={session.leave}>回到大厅</button>
           <p>回到匹配队列，和新的对手再开一局。</p></>
         : <><button className="primary large" onClick={session.leave}><ArrowRight size={18} />回到大厅</button>
-          <p>用知乎账号登录后，这里可以直接一键重新匹配。</p></>}
+           <p>游客也可以直接匹配；知乎登录是可选的身份扩展。</p></>}
     </div>
     {theme.assets.revealArtwork && <img className="reveal-artwork" src={theme.assets.revealArtwork} alt="" />}
     <div className="identity-list">{view.seats.map(seat => { const role = result.roles.find(item => item.seatId === seat.seatId)!.role;
