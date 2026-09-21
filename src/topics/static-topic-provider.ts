@@ -178,8 +178,13 @@ const verifiedPackIds = new Set([
 export const productionTopicPacks = candidateTopicPacks.filter(pack => verifiedPackIds.has(pack.packId));
 
 export class StaticTopicProvider implements TopicProvider {
-  private packs = new Map(allTopicPacks.map(input => { const pack = parseTopicPack(input); return [pack.packId, pack]; }));
-  readonly candidateIds = [...this.packs.keys()];
+  private packs: Map<string, TopicPackV1>;
+  readonly candidateIds: readonly string[];
+  constructor(packs: readonly TopicPackV1[] = allTopicPacks) {
+    this.packs = new Map(packs.map(input => { const pack = parseTopicPack(input); return [pack.packId, pack]; }));
+    if (this.packs.size === 0) throw new Error("STATIC_TOPIC_PACKS_EMPTY");
+    this.candidateIds = [...this.packs.keys()];
+  }
   async resolve(candidateId: string, signal: AbortSignal) {
     if (signal.aborted) throw new Error("ABORTED");
     const pack = this.packs.get(candidateId);

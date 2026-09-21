@@ -13,7 +13,7 @@ export interface Topic {
   defaults: Record<Round, string[]>;
   provenance?: {
     packId: string;
-    source: "zhihu";
+    source: "zhihu" | "original";
     curatedAt: string;
     verifiedAt?: string;
     selectedAnswerUrl?: string;

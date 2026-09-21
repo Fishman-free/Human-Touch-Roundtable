@@ -38,6 +38,7 @@ export function project(state: GameState, viewer: Viewer) {
     seats: state.seats.map(({ seatId, displayNumber }) => ({ seatId, displayNumber })),
     topic: state.topic ? {
       id: state.topic.id, title: state.topic.title, url: state.topic.url,
+      source: state.topic.provenance?.source ?? "zhihu",
       ...(showTopAnswer ? { topAnswerExcerpt: state.topic.topAnswerExcerpt } : {}),
     } : undefined,
     answers: Object.fromEntries(([1, 2, 3] as const).map(round => [round,

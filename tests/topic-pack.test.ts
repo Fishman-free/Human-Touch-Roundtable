@@ -76,16 +76,17 @@ test("题目缓存按候选隔离、返回副本并在TTL后重新核验", async
   await assert.rejects(cached.resolve("test-topic", aborted.signal), /ABORTED/);
 });
 
-test("题目环境组装开发默认静态，生产默认要求真实核验网关", () => {
+test("题目环境组装开发默认静态，生产默认使用本地策展题库", () => {
   assert.equal(candidateTopicPacks.length, 11);
   assert.equal(productionTopicPacks.length, 9);
   assert.ok(productionTopicPacks.every(pack => candidateTopicPacks.includes(pack)));
-  assert.ok(createTopicProvider({}, true) instanceof StaticTopicProvider);
-  assert.throws(() => createTopicProvider({}, false), /ZHIHU_ACCESS_SECRET_REQUIRED/);
+  assert.ok(createTopicProvider({}, true).candidateIds.every(id => id.startsWith("original-")));
+  assert.ok(createTopicProvider({}, false).candidateIds.every(id => id.startsWith("original-")));
   assert.throws(() => createTopicProvider({ TOPIC_MODE: "static" }, false), /STATIC_TOPICS_NOT_ALLOWED_IN_PRODUCTION/);
   assert.ok(createTopicProvider({ TOPIC_MODE: "static", ALLOW_STATIC_TOPICS_IN_PRODUCTION: "true" }, false)
     instanceof StaticTopicProvider);
-  assert.ok(createTopicProvider({ ZHIHU_ACCESS_SECRET: "test-only-secret" }, false) instanceof CachedTopicProvider);
+  assert.ok(createTopicProvider({ TOPIC_MODE: "verified", ZHIHU_ACCESS_SECRET: "test-only-secret" }, false) instanceof CachedTopicProvider);
+  assert.throws(() => createTopicProvider({ TOPIC_MODE: "verified" }, false), /ZHIHU_ACCESS_SECRET_REQUIRED/);
   assert.throws(() => createTopicProvider({ TOPIC_MODE: "unknown" }, true), /INVALID_TOPIC_MODE/);
 });
 

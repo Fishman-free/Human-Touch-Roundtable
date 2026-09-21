@@ -7,7 +7,7 @@
 ```sh
 export DOMAIN=roundtable.example.com
 export SESSION_HMAC_KEY="$(openssl rand -hex 32)"
-export TOPIC_MODE=static
+export TOPIC_MODE=local
 export ALLOW_STATIC_TOPICS_IN_PRODUCTION=true
 export DEEPSEEK_API_KEY=ci-placeholder-not-a-real-key
 docker compose up -d --build app

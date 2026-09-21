@@ -15,7 +15,7 @@ Internet → Caddy :443 → app :3000 → SQLite persistent volume
 1. DNS将`DOMAIN`指向服务器。
 2. 生成至少32字节随机`SESSION_HMAC_KEY`和`ADMIN_TOKEN`。需要暴露指标时再配置至少24字节`METRICS_TOKEN`；省略后`/api/metrics`不启用。
 3. 配置DeepSeek或GLM至少一个API Key；生产禁止Mock AI。
-4. 配置知乎开放平台`ZHIHU_ACCESS_SECRET`；默认`TOPIC_MODE=verified`会在凭据缺失时拒绝启动。设为`recommended`可在人工片单之外并入动态推荐题目。
+4. 默认`TOPIC_MODE=local`使用6道原创讨论题，无需知乎凭据。需要外部知乎题源时，再配置`ZHIHU_ACCESS_SECRET`并设置`TOPIC_MODE=verified`或`recommended`。已有部署如果显式设了旧模式，需要手动改为local。
 5. 确保持久卷和备份目标受到访问控制。
 
 不要把生产环境变量写入仓库。按`.env.example`字段在服务器安全配置后运行：
@@ -31,13 +31,15 @@ Caddy自动申请TLS证书并转发WebSocket。`TRUST_PROXY_HOPS=1`只适用于�
 
 ## 题目模式切换
 
-`TOPIC_MODE`在`verified`与`recommended`之间切换只需改环境变量并重建容器，不需要重新构建镜像：
+`TOPIC_MODE`在`local`、`verified`与`recommended`之间切换只需改环境变量并重建容器，不需要重新构建镜像：
 
 ```sh
 # 切换到动态推荐题目
 TOPIC_MODE=recommended docker compose up -d --force-recreate app
 # 回滚
 TOPIC_MODE=verified docker compose up -d --force-recreate app
+
+TOPIC_MODE=local docker compose up -d --force-recreate app
 ```
 
 `recommended`在启动时读取`ZHIHU_TOPIC_CANDIDATE_PATH`快照；快照缺失或过期时会在`ZHIHU_TOPIC_CANDIDATE_TIMEOUT_MS`内尝试拉取，失败则退回过期快照，再失败则仅使用人工片单。**启动路径不会因为网络或额度失败而不可用。**

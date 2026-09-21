@@ -1,6 +1,7 @@
 import type { TopicProvider } from "../application/ports.ts";
 import type { LlmProvider } from "../ai/llm-provider.ts";
 import { StaticTopicProvider } from "./static-topic-provider.ts";
+import { LocalTopicProvider } from "./local-topic-provider.ts";
 import { productionTopicPacks } from "./static-topic-provider.ts";
 import { CachedTopicProvider } from "./cached-topic-provider.ts";
 import { VerifiedTopicProvider } from "./verified-topic-provider.ts";
@@ -49,12 +50,15 @@ function persistent(provider: TopicProvider, environment: Readonly<Record<string
 // mode's boot fetch lives in openTopicProvider.
 export function createTopicProvider(environment: Readonly<Record<string, string | undefined>>,
   development: boolean, options: TopicProviderOptions = {}): TopicProvider {
-  const mode = environment.TOPIC_MODE ?? (development ? "static" : "verified");
+  const mode = environment.TOPIC_MODE ?? "local";
   if (mode === "static") {
     if (!development && environment.ALLOW_STATIC_TOPICS_IN_PRODUCTION !== "true") {
       throw new Error("STATIC_TOPICS_NOT_ALLOWED_IN_PRODUCTION");
     }
     return new StaticTopicProvider();
+  }
+  if (mode === "local") {
+    return new LocalTopicProvider();
   }
   if (mode === "verified") {
     const secret = environment.ZHIHU_ACCESS_SECRET;
@@ -142,7 +146,7 @@ async function resolveSeed(environment: Readonly<Record<string, string | undefin
 // without touching the network.
 export async function openTopicProvider(environment: Readonly<Record<string, string | undefined>>,
   development: boolean, options: TopicBootOptions = {}): Promise<TopicProvider> {
-  const mode = environment.TOPIC_MODE ?? (development ? "static" : "verified");
+  const mode = environment.TOPIC_MODE ?? "local";
   if (mode !== "recommended") return createTopicProvider(environment, development, options);
   const secret = environment.ZHIHU_ACCESS_SECRET;
   if (!secret) throw new Error("ZHIHU_ACCESS_SECRET_REQUIRED");

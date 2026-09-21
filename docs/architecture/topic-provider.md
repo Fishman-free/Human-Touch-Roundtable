@@ -44,7 +44,7 @@
 
 当前使用官方接口：`GET /api/v1/content/hot_list`、`GET /api/v1/content/zhihu_search`、`GET /api/v1/content/question_answers`与`GET /api/v1/user/question_recommendations`，均使用Bearer Access Secret和秒级`X-Request-Timestamp`。禁止抓取网页冒充官方接口。
 
-`createTopicProvider`负责环境门禁：开发默认static；生产默认verified并要求`ZHIHU_ACCESS_SECRET`。成功结果默认缓存7天，可用`ZHIHU_TOPIC_CACHE_MS`调整；设置`ZHIHU_TOPIC_CACHE_PATH`时使用持久化缓存，未设置则退回进程内缓存并在进程重启后消失；同候选并发请求会合并。static只有同时设置`ALLOW_STATIC_TOPICS_IN_PRODUCTION=true`才可用于基础设施冒烟，不能用于公开游戏。`recommended`在`verified`之上叠加动态候选；回滚只需把它改回`verified`并重建容器，不需要重新构建镜像。`openTopicSystem`是供服务器使用的入口，在`openTopicProvider`之上额外返回`close()`以停止刷新循环；`scripts/`下的预热与核验脚本仍用只返回提供器的`openTopicProvider`。
+开发与生产默认`TOPIC_MODE=local`，由`LocalTopicProvider`提供6道原创题和虚构讨论材料，无平台请求。原创题的`provenance.source=original`且`url`为空；旧字段`topAnswerExcerpt`保留兼容，但在界面上称为讨论材料。核心及存储校验接受原创题，知乎来源仍校验其链接。`verified/recommended`为需要知乎凭据的可选模式；`static`为旧知乎开发夹具，生产需测试开关。外部题缓存、推荐和刷新行为保持原配置；`openTopicSystem.close()`停止刷新循环。
 
 ## 排序与覆盖限制
 
