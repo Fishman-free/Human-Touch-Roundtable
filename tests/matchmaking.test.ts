@@ -150,12 +150,32 @@ test("HTTP匹配拒绝游客和跨站请求，OAuth Cookie安全且当前账号�
     const cookie = callback.headers.getSetCookie()[0].split(";")[0];
     const account = await fetch(`${base}/api/auth/session`, { headers: { cookie } });
     assert.equal(account.headers.get("cache-control"), "no-store");
-    assert.deepEqual(await account.json(), { enabled: true, user: { name: "当前用户" } });
+    assert.deepEqual(await account.json(), { enabled: true, user: { name: "当前用户" }, guest: false });
     assert.equal((await fetch(`${base}/api/matchmaking?action=join`, { method: "POST", headers: { cookie, origin: "https://evil.example" } })).status, 403);
     const own = { method: "POST", headers: { ...post.headers, cookie } };
     assert.deepEqual(await (await fetch(`${base}/api/matchmaking?action=join`, own)).json(), { status: "waiting", waiting: 1 });
     assert.equal((await fetch(`${base}/api/auth/logout`, own)).status, 200);
     assert.equal((await fetch(`${base}/api/matchmaking?action=poll`, own)).status, 401);
     assert.equal((await h.matches.update("other", "join", h.expiresAt)).status, "waiting");
+  } finally { await new Promise<void>(resolve => http.close(() => resolve())); await h.close(); }
+});
+
+test("未配置OAuth时游客仍可获取临时身份并进入匹配队列", async () => {
+  const h = harness();
+  const oauth = new ZhihuOAuth(undefined);
+  const http = createServer((request, response) => {
+    void handleAccountRequest(request, response, oauth, h.matches).then(handled => { if (!handled) response.end(); });
+  });
+  await new Promise<void>(resolve => http.listen(0, "127.0.0.1", resolve));
+  const address = http.address(); assert(address && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    const session = await fetch(`${base}/api/auth/session`);
+    assert.deepEqual(await session.json(), { enabled: false, user: null, guest: true });
+    const guestCookie = session.headers.getSetCookie()[0].split(";")[0];
+    const response = await fetch(`${base}/api/matchmaking?action=join`, {
+      method: "POST", headers: { cookie: guestCookie, origin: "https://airoundtable.stream" },
+    });
+    assert.deepEqual(await response.json(), { status: "waiting", waiting: 1 });
   } finally { await new Promise<void>(resolve => http.close(() => resolve())); await h.close(); }
 });

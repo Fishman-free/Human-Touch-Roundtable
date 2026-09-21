@@ -10,6 +10,10 @@ export function EntryScreen({ session, theme }: { session: GameSession; theme?: 
   const [rulesOpen, setRulesOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const root = useRef<HTMLElement>(null);
+  async function copyInvite() {
+    const url = new URL(window.location.href); url.searchParams.set("room", session.roomId.trim().toLowerCase());
+    await navigator.clipboard?.writeText(url.toString());
+  }
   useEffect(() => {
     const text = "坐下来，带着一个观点，也带着一点犹豫。";
     const media = gsap.matchMedia();
@@ -39,7 +43,7 @@ export function EntryScreen({ session, theme }: { session: GameSession; theme?: 
       {session.matchmaking && <MatchmakingPanel controls={session.matchmaking} disabled={!session.connected || session.busy} />}
       <div className="mode-switch" aria-label="进入身份"><button className={session.mode === "player" ? "active" : ""} onClick={() => session.setMode("player")}><Users size={17} />玩家</button><button className={session.mode === "spectator" ? "active" : ""} onClick={() => session.setMode("spectator")}><Eye size={17} />观战</button></div>
       <label htmlFor="room">房间号</label><input id="room" placeholder="输入房间号" value={session.roomId} maxLength={24} autoComplete="off" onChange={event => session.setRoomId(event.target.value.toLowerCase())} onKeyDown={event => { if (event.key === "Enter") session.join(); }} />
-      <div className="entry-actions"><button className="primary" disabled={!session.connected || session.busy || session.matchmaking?.waiting || session.matchmaking?.busy} onClick={session.join}>进入房间<ArrowRight size={18} /></button><button className="secondary" disabled={!session.connected || session.busy || session.matchmaking?.waiting || session.matchmaking?.busy} onClick={session.create}>创建新房</button></div>
+       <div className="entry-actions"><button className="primary" disabled={!session.connected || session.busy || session.matchmaking?.waiting || session.matchmaking?.busy} onClick={session.join}>进入房间<ArrowRight size={18} /></button><button className="secondary" disabled={!session.connected || session.busy || session.matchmaking?.waiting || session.matchmaking?.busy} onClick={session.create}>创建新房</button><button className="secondary" disabled={!session.roomId.trim()} onClick={copyInvite}>复制邀请链接</button></div>
       <div className={`entry-status ${session.connected ? "online" : ""}`}><CircleDot size={14} />{session.connected ? "服务已连接 · 随时可以入席" : "正在连接服务"}</div>{session.error && <p className="form-error" role="alert">{session.error}</p>}
     </div></section>
     <footer className="entry-footer">匿名代号按座位固定映射 · 看山 / 听雨 / 观雾 / 闻花</footer>

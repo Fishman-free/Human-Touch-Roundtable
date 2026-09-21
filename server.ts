@@ -46,7 +46,8 @@ const topicTimeoutMs = Number(process.env.TOPIC_TIMEOUT_MS ?? 20_000);
 if (!Number.isSafeInteger(topicTimeoutMs) || topicTimeoutMs <= 0) throw new Error("INVALID_TOPIC_TIMEOUT_MS");
 const http = createServer((request, response) => {
   void (async () => {
-    if (await handleAccountRequest(request, response, oauth, context.matchmaking, trustedProxyHops)) return;
+    if (await handleAccountRequest(request, response, oauth, context.matchmaking, trustedProxyHops,
+      process.env.PUBLIC_ORIGIN ?? "https://airoundtable.stream")) return;
     if (await handleAdminRequest(request, response, adminToken, context, event => monitor.lifecycle("admin.audit", event as unknown as Record<string, unknown>))) return;
     if (await handleOperationalRequest(request, response, {
       ready: () => ready && context.check(), metrics: () => monitor.metrics.render(), metricsToken,
